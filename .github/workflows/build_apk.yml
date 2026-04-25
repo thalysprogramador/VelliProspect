@@ -5,27 +5,38 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python dependencies
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install flet
           pip install -r requirements.txt
 
-      - name: Build APK and Web
-        uses: flet-dev/flet-build-action@v1
-        with:
-          target: apk,web
-          project_path: .
-          python_version: '3.11'
+      - name: Build Web Version
+        run: |
+          flet publish main.py --output build/web
+
+      - name: Build APK Version
+        run: |
+          # Garantir que o comando flet seja encontrado
+          export PATH="$PATH":"$HOME/.local/bin"
+          flet build apk --project .
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -33,13 +44,13 @@ jobs:
         with:
           files: |
             build/apk/*.apk
-            build/web.zip
+            build/web/**/*
           name: "Velli Prospect V3 - Build ${{ github.run_number }}"
           tag_name: v1.0.${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy Web to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
