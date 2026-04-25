@@ -30,8 +30,7 @@ jobs:
 
       - name: Build APK
         run: |
-          # Flet build command
-          flet build apk --project . --release
+          flet build apk --project .
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
