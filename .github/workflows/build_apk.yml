@@ -1,0 +1,38 @@
+name: Build Flet APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet
+          pip install -r requirements.txt
+
+      - name: Build APK
+        run: |
+          # Nota: O flet build apk requer o SDK do Android e o Flutter. 
+          # Esta action facilita o processo.
+          echo "Building APK..."
+          # Para um build real, o usuário precisaria configurar o Flutter/Android SDK
+          # ou usar uma action específica como a do Flet.
+          # Como demonstração, deixaremos o placeholder da estrutura.
+        
+      # - name: Build Android APK
+      #   uses: flet-dev/flet-build-action@v1
+      #   with:
+      #     target: apk
+      #     project_path: .
