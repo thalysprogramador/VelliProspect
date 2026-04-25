@@ -30,13 +30,13 @@ jobs:
 
       - name: Build Web Version
         run: |
-          flet publish main.py --output build/web
+          export PATH="$PATH":"$HOME/.local/bin"
+          flet publish main.py --to build/web
 
       - name: Build APK Version
         run: |
-          # Garantir que o comando flet seja encontrado
           export PATH="$PATH":"$HOME/.local/bin"
-          flet build apk --project .
+          flet build apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
