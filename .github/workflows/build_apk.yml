@@ -31,12 +31,12 @@ jobs:
       - name: Build Web Version
         run: |
           export PATH="$PATH":"$HOME/.local/bin"
-          flet publish main.py --to build/web
+          flet build web .
 
       - name: Build APK Version
         run: |
           export PATH="$PATH":"$HOME/.local/bin"
-          flet build apk
+          flet build apk .
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
