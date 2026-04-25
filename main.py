@@ -230,4 +230,4 @@ def main(page: ft.Page):
 
 # ─── Entry Point ──────────────────────────────────────────────
 if __name__ == "__main__":
-    ft.run(main)
+    ft.app(target=main)
