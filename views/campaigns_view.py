@@ -352,7 +352,7 @@ def build_campaigns_view(page: ft.Page):
     # Carregar ao construir
     load_campaigns()
 
-    view = ft.Column(
+    view_col = ft.Column(
         controls=[
             # Header
             ft.Row(
@@ -390,6 +390,13 @@ def build_campaigns_view(page: ft.Page):
         expand=True,
         spacing=0,
     )
+    
+    view = ft.Container(
+        content=view_col,
+        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
+        expand=True,
+    )
+
 
     # Expositor de atualização automática para cross-routing
     view.on_active = lambda: load_campaigns()
