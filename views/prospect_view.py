@@ -7,7 +7,8 @@ import threading
 import time
 from scraper import scrape_leads, get_available_sources
 from ai_evaluator import evaluate_lead, evaluate_leads_batch
-from database import create_campaign, update_campaign_stats, insert_lead
+from database import update_campaign_stats
+from persistence import get_campaigns, save_campaign, add_lead_to_campaign
 from views.copilot_view import build_copilot_view
 
 
@@ -508,15 +509,15 @@ def build_prospect_view(page: ft.Page):
             nonlocal approved_leads, is_running
             
             try:
-                campaign_id = create_campaign(
-                    name=f"{niche} — {region}",
-                    niche=niche,
-                    region=region,
-                    source=source,
-                    criteria=criteria,
-                    min_score=min_s,
-                    max_results=max_r,
-                )
+                campaign_id = save_campaign(page, {
+                    "name": f"{niche} — {region}",
+                    "niche": niche,
+                    "region": region,
+                    "source": source,
+                    "criteria": criteria,
+                    "min_score": min_s,
+                    "max_results": max_r,
+                })
 
                 # Fase 1: Scraping
                 status_text.value = f"🌐 Vasculhando '{source}' em '{region}'..."
@@ -579,8 +580,8 @@ def build_prospect_view(page: ft.Page):
                             }
                             approved_leads.append(enriched_lead)
 
-                            # Salvar no banco
-                            insert_lead(campaign_id, enriched_lead)
+                            # Salvar no banco (Isolado se Web)
+                            add_lead_to_campaign(page, campaign_id, enriched_lead)
 
                             # Adicionar card na lista com animação
                             card = _build_lead_card(enriched_lead, len(approved_leads) - 1)
