@@ -209,7 +209,15 @@ def build_copilot_view(page: ft.Page):
 
         def get_response():
             nonlocal is_thinking
-            api_key = get_setting("gemini_api_key")
+            from database import get_setting
+            
+            # Prioriza a chave do navegador (isolamento multi-usuário na Web)
+            api_key = ""
+            if page.web:
+                api_key = page.client_storage.get("gemini_api_key")
+            
+            if not api_key:
+                api_key = get_setting("gemini_api_key")
             leads = get_all_leads()
 
             # Converter para formato esperado pelo copilot_chat
@@ -263,7 +271,7 @@ def build_copilot_view(page: ft.Page):
     )
 
     # Layout
-    view = ft.Column(
+    view_col = ft.Column(
         controls=[
             # Header
             ft.Container(
@@ -321,6 +329,12 @@ def build_copilot_view(page: ft.Page):
         ],
         expand=True,
         spacing=0,
+    )
+    
+    view = ft.Container(
+        content=view_col,
+        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
+        expand=True,
     )
 
     return view
