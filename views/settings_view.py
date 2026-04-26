@@ -20,8 +20,13 @@ ERROR = "#F87171"
 def build_settings_view(page: ft.Page):
     """Constrói a view de configurações."""
 
-    # Carregar configurações salvas
-    saved_key = get_setting("gemini_api_key", "")
+    # Carregar configurações salvas (Prioriza Client Storage na Web)
+    saved_key = ""
+    if page.web:
+        saved_key = page.client_storage.get("gemini_api_key") or ""
+    
+    if not saved_key:
+        saved_key = get_setting("gemini_api_key", "")
 
     api_key_field = ft.TextField(
         label="Gemini API Key",
@@ -42,7 +47,7 @@ def build_settings_view(page: ft.Page):
     status_text = ft.Text("", size=12, font_family="Inter")
 
     def save_api_key(e):
-        """Salva a API Key no banco local."""
+        """Salva a API Key (No banco local e no Client Storage se Web)."""
         key = api_key_field.value.strip()
         if not key:
             status_text.value = "⚠️ A chave não pode estar vazia."
@@ -50,8 +55,14 @@ def build_settings_view(page: ft.Page):
             page.update()
             return
 
+        # Salva no banco local (Desktop/Mobile)
         set_setting("gemini_api_key", key)
-        status_text.value = "✅ API Key salva com sucesso!"
+        
+        # Salva no navegador (Web)
+        if page.web:
+            page.client_storage.set("gemini_api_key", key)
+            
+        status_text.value = "✅ API Key salva individualmente!"
         status_text.color = SUCCESS
 
         page.snack_bar = ft.SnackBar(
@@ -109,7 +120,7 @@ def build_settings_view(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
-    view = ft.Column(
+    view_main = ft.Column(
         controls=[
             # Header
             ft.Container(
@@ -287,5 +298,12 @@ def build_settings_view(page: ft.Page):
         expand=True,
         spacing=0,
     )
+    
+    view = ft.Container(
+        content=view_main,
+        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
+        expand=True,
+    )
+
 
     return view
