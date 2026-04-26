@@ -48,7 +48,7 @@ def main(page: ft.Page):
     # ─── Content Area ─────────────────────────────────────
     content_area = ft.Container(
         expand=True,
-        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
+        padding=0, # Removido para permitir overlays (Gavetas) de tela cheia
         bgcolor=BG_PRIMARY,
     )
 
@@ -230,4 +230,4 @@ def main(page: ft.Page):
 
 # ─── Entry Point ──────────────────────────────────────────────
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(main)
