@@ -453,7 +453,13 @@ def build_prospect_view(page: ft.Page):
             return
 
         from database import get_setting
-        api_key = get_setting("gemini_api_key")
+        # Prioriza a chave do navegador (isolamento multi-usuário na Web)
+        api_key = ""
+        if page.web:
+            api_key = page.client_storage.get("gemini_api_key")
+        
+        if not api_key:
+            api_key = get_setting("gemini_api_key")
 
         niche = niche_field.value
         region = region_field.value
@@ -607,8 +613,7 @@ def build_prospect_view(page: ft.Page):
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
 
-    # ─── Layout Principal ─────────────────────────────────
-    view = ft.Column(
+    view_main = ft.Column(
         controls=[
             # Header
             ft.Container(
@@ -623,6 +628,7 @@ def build_prospect_view(page: ft.Page):
                 ),
                 padding=ft.Padding.only(bottom=20),
             ),
+
 
             # Seção 1: Onde e Quem
             ft.Container(
@@ -717,41 +723,57 @@ def build_prospect_view(page: ft.Page):
         expand=True,
         spacing=0,
     )
+    
+    view = ft.Container(
+        content=view_main,
+        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
+        expand=True,
+    )
 
-    # ─── Copilot Drawer ───────────────────────────────────
+    # ─── VELLIX IA Drawer ───────────────────────────────────
     copilot_ui = build_copilot_view(page)
-    # Remove padding excessivo do header da gaveta pra compactar
-    if getattr(copilot_ui, "controls", None) and getattr(copilot_ui.controls[0], "padding", None):
-        copilot_ui.controls[0].padding = ft.Padding.only(bottom=0)
+    # Ajuste de layout para caber na gaveta
+    if hasattr(copilot_ui, "controls") and len(copilot_ui.controls) > 0:
+        copilot_ui.controls[0].padding = ft.Padding.only(bottom=10)
 
     drawer = ft.Container(
         content=copilot_ui,
-        width=400,
+        width=420,
         bgcolor=BG_CARD,
         border=ft.Border(left=ft.BorderSide(1, BORDER_SUBTLE)),
-        offset=ft.Offset(1, 0),
-        animate_offset=ft.Animation(400, ft.AnimationCurve.DECELERATE),
-        shadow=ft.BoxShadow(spread_radius=0, blur_radius=30, color="#66000000"),
+        right=-430, # Escondido à direita
+        top=0,
+        bottom=0,
+        shadow=ft.BoxShadow(spread_radius=0, blur_radius=50, color="#88000000"),
+        animate=ft.Animation(500, ft.AnimationCurve.DECELERATE),
     )
 
     overlay = ft.Container(
         expand=True,
-        bgcolor="#660A0A0A",
+        bgcolor="#33000000",
+        blur=ft.Blur(10, 10, ft.BlurTileMode.CLAMP),
         visible=False,
-        on_click=lambda e: toggle_copilot(None),
-        animate_opacity=200,
         opacity=0,
+        on_click=lambda _: toggle_copilot(None),
+        animate_opacity=300,
     )
 
     def toggle_copilot(e):
-        if drawer.offset.x == 1:
-            drawer.offset.x = 0
+        if drawer.right == -430:
             overlay.visible = True
+            page.update() # Garante que visible=True antes da opacidade
+            drawer.right = 0
             overlay.opacity = 1
         else:
-            drawer.offset.x = 1
+            drawer.right = -430
             overlay.opacity = 0
-            overlay.visible = False
+            page.update()
+            import time
+            def hide_overlay():
+                time.sleep(0.3)
+                overlay.visible = False
+                page.update()
+            threading.Thread(target=hide_overlay, daemon=True).start()
         page.update()
 
     fab = ft.Container(
@@ -772,12 +794,7 @@ def build_prospect_view(page: ft.Page):
             view,
             overlay,
             fab,
-            ft.Container(
-                content=drawer,
-                right=0,
-                top=0,
-                bottom=0,
-            ),
+            drawer,
         ],
         expand=True,
     )
