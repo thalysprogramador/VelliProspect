@@ -4,6 +4,10 @@ Tela de histórico de campanhas salvas com detalhamento de leads.
 """
 import flet as ft
 from database import get_all_campaigns, get_leads_by_campaign, delete_campaign
+from persistence import get_campaigns, add_lead_to_campaign
+import pandas as pd
+import io
+import base64
 
 # ─── Design System ───────────────────────────────────────────
 BG_PRIMARY = "#0A0A0A"
@@ -254,12 +258,80 @@ def build_campaigns_view(page: ft.Page):
             )
             lead_items.append(lead_card)
 
-        detail_panel.controls = [detail_header, ft.Container(height=10)] + lead_items
+        # Header com Botão de Exportar Excel
+        export_btn = ft.ElevatedButton(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.FILE_DOWNLOAD, size=16),
+                    ft.Text("EXPORTAR EXCEL", size=11, weight=ft.FontWeight.W_600),
+                ],
+                spacing=6,
+            ),
+            bgcolor=ACCENT,
+            color=BG_PRIMARY,
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=lambda e: export_to_excel(campaign, leads),
+        )
+
+        detail_panel.controls = [
+            ft.Row([detail_header, export_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
+            ft.Container(height=10)
+        ] + lead_items
         detail_panel.visible = True
         back_button.visible = True
         campaigns_list.visible = False
         empty_state.visible = False
         page.update()
+
+    def export_to_excel(campaign, leads):
+        """Gera um arquivo Excel e dispara o download."""
+        if not leads: return
+        
+        # Preparar dados para o Pandas
+        df_data = []
+        for lead in leads:
+            tags = lead.get("tags", [])
+            if isinstance(tags, str):
+                try: tags = json.loads(tags)
+                except: tags = []
+            
+            df_data.append({
+                "Nome": lead.get("name", ""),
+                "Link/Site": lead.get("link", ""),
+                "Score": lead.get("score", 0),
+                "Motivo": lead.get("reason", ""),
+                "Tags": ", ".join(tags) if isinstance(tags, list) else "",
+                "Decisor": lead.get("decision_maker", "Desconhecido"),
+                "Descrição": lead.get("description", "")
+            })
+        
+        df = pd.DataFrame(df_data)
+        
+        # Criar buffer em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Leads Aprovados')
+        
+        excel_data = output.getvalue()
+        
+        # Download (Híbrido)
+        filename = f"Velli_Leads_{campaign['niche'].replace(' ', '_')}.xlsx"
+        
+        if page.web:
+            # No Web usa Data URI
+            b64 = base64.b64encode(excel_data).decode()
+            page.launch_url(f"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}")
+        else:
+            # No Desktop salva na Área de Trabalho
+            import os
+            path = os.path.join(os.path.expanduser("~"), "Desktop", filename)
+            with open(path, "wb") as f:
+                f.write(excel_data)
+            
+            page.snack_bar = ft.SnackBar(ft.Text(f"✅ Excel salvo em: {path}"))
+            page.snack_bar.open = True
+            page.update()
+
 
     def delete_and_refresh(campaign_id):
         """Deleta uma campanha e recarrega a lista."""
@@ -267,8 +339,8 @@ def build_campaigns_view(page: ft.Page):
         load_campaigns()
 
     def load_campaigns():
-        """Carrega as campanhas do banco de dados."""
-        campaigns = get_all_campaigns()
+        """Carrega as campanhas (Isolado se Web)."""
+        campaigns = get_campaigns(page)
         campaigns_list.controls.clear()
         campaigns_list.visible = True
 
