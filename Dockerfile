@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Render injeta PORT=10000 automaticamente. O main.py lê via os.environ.
-CMD ["python", "main.py"]
+# Render injeta $PORT (default 10000). Precisamos repassar para o Flet.
+CMD ["sh", "-c", "FLET_SERVER_PORT=${PORT:-10000} FLET_SERVER_IP=0.0.0.0 python main.py"]
