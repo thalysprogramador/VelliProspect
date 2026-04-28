@@ -1,20 +1,16 @@
-# Velli Prospect V3 - Professional Web Dockerfile
+# Velli Prospect V3 - Production Web Dockerfile
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
-ENV PORT 8080
+ENV FLET_FORCE_WEB_SERVER true
 
 WORKDIR /app
-
-# Removemos dependências GTK, desnecessárias para modo Web.
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8080
-
-# Inicia o app usando o servidor web nativo do Flet
-CMD ["sh", "-c", "flet run --web --port ${PORT:-8080} main.py"]
+# Render injeta $PORT automaticamente
+CMD ["sh", "-c", "python main.py"]
