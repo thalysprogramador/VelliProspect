@@ -26,7 +26,8 @@ def build_settings_view(page: ft.Page):
         saved_key = page.client_storage.get("gemini_api_key") or ""
     
     if not saved_key:
-        saved_key = get_setting("gemini_api_key", "")
+        import os
+        saved_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key", "")
 
     api_key_field = ft.TextField(
         label="Gemini API Key",
