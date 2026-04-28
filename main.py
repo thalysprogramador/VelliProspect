@@ -48,7 +48,7 @@ def main(page: ft.Page):
     # ─── Content Area ─────────────────────────────────────
     content_area = ft.Container(
         expand=True,
-        padding=0, # Removido para permitir overlays (Gavetas) de tela cheia
+        padding=0,
         bgcolor=BG_PRIMARY,
     )
 
@@ -219,8 +219,6 @@ def main(page: ft.Page):
         page.update()
 
     page.on_resized = on_resize
-    page.window.width = 1200
-    page.window.height = 800
 
     # ─── Initial Load ─────────────────────────────────────
     switch_view(0)
@@ -228,8 +226,12 @@ def main(page: ft.Page):
     page.update()
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────
+# ─── Entry Point ──────────────────────────────────────────────
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 8000))
-    ft.run(main, host="0.0.0.0", port=port, assets_dir="assets")
+    # Render injeta PORT=10000. Repassamos para o Flet via env vars.
+    port = int(os.environ.get("PORT", 10000))
+    os.environ["FLET_SERVER_PORT"] = str(port)
+    os.environ["FLET_SERVER_IP"] = "0.0.0.0"
+    os.environ.setdefault("FLET_FORCE_WEB_SERVER", "true")
+    ft.run(main, assets_dir="assets")
