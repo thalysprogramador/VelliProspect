@@ -6,3 +6,5 @@ certifi
 pandas
 openpyxl
 supabase
+flet-fastapi
+uvicorn
