@@ -228,9 +228,8 @@ def main(page: ft.Page):
     page.update()
 
 
-# ─── Entry Point ──────────────────────────────────────────────
+# ─── Entry Point ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 8080))
-    # host="0.0.0.0" é obrigatório para o Render conseguir acessar o app
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+    port = int(os.environ.get("PORT", 8000))
+    ft.run(main, host="0.0.0.0", port=port, assets_dir="assets")
