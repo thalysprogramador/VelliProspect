@@ -16,5 +16,5 @@ COPY . .
 
 EXPOSE 8080
 
-# Inicia o app garantindo que ele escute na porta correta
-CMD ["python", "main.py"]
+# Inicia o app usando o servidor web nativo do Flet
+CMD ["sh", "-c", "flet run --web --port ${PORT:-8080} main.py"]
