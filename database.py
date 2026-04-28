@@ -1,226 +1,131 @@
 """
-Velli Prospect V3 — Database Layer (SQLite)
-Gerencia campanhas e leads persistidos localmente.
-Funciona tanto no PC quanto no celular (Android via Flet).
+Velli Prospect V3 — Database Layer (Supabase PostgreSQL)
+Gerencia campanhas e leads persistidos na nuvem de forma gratuita.
 """
-import sqlite3
-import json
 import os
+import json
 from datetime import datetime
+from supabase import create_client, Client
 
+SUPABASE_URL = "https://emsejcohbjtymxtahnyb.supabase.co"
+SUPABASE_KEY = "sb_publishable_r4Q2eU0K5gL6u6YoeuXCEw_fbJZfFnz"
 
-def _get_db_path():
-    """Retorna o caminho do banco de dados, compatível com desktop e mobile."""
-    # No Android, o Flet define um diretório de dados do app através de FLET_APP_STORAGE_DATA.
-    # No desktop (PyInstaller), arquivos sofrem flush em Temp, logo forçamos um local estático e seguro.
-    data_dir = os.environ.get("FLET_APP_STORAGE_DATA")
-    
-    if not data_dir:
-        home_dir = os.path.expanduser("~")
-        data_dir = os.path.join(home_dir, ".velli")
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir, exist_ok=True)
-            
-    return os.path.join(data_dir, "velli_prospect_v3.db")
-
+# Inicialização lenta para evitar erros na importação caso falte env var
+_supabase: Client = None
 
 def get_connection():
-    """Cria e retorna uma conexão com o banco SQLite."""
-    conn = sqlite3.connect(_get_db_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
-
-
-def init_db():
-    """Inicializa as tabelas do banco de dados."""
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            niche TEXT NOT NULL,
-            region TEXT NOT NULL,
-            source TEXT NOT NULL,
-            criteria TEXT,
-            min_score INTEGER DEFAULT 7,
-            max_results INTEGER DEFAULT 100,
-            status TEXT DEFAULT 'pending',
-            total_found INTEGER DEFAULT 0,
-            total_approved INTEGER DEFAULT 0,
-            total_discarded INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL,
-            finished_at TEXT
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            link TEXT,
-            description TEXT,
-            has_phone INTEGER DEFAULT 0,
-            has_email INTEGER DEFAULT 0,
-            score INTEGER DEFAULT 0,
-            reason TEXT,
-            tags TEXT,
-            decision_maker TEXT,
-            whatsapp_ready INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'approved',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+    """Retorna a instância do Supabase Client."""
+    global _supabase
+    if _supabase is None:
+        _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase
 
 
 # ─── Campaign CRUD ───────────────────────────────────────────
 
 def create_campaign(name, niche, region, source, criteria="", min_score=7, max_results=100):
     """Cria uma nova campanha e retorna o ID."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO campaigns (name, niche, region, source, criteria, min_score, max_results, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)
-    """, (name, niche, region, source, criteria, min_score, max_results, datetime.now().isoformat()))
-    campaign_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return campaign_id
+    supabase = get_connection()
+    data = {
+        "name": name,
+        "niche": niche,
+        "region": region,
+        "source": source,
+        "criteria": criteria,
+        "min_score": min_score,
+        "max_results": max_results,
+        "status": 'running',
+        "created_at": datetime.now().isoformat()
+    }
+    response = supabase.table("campaigns").insert(data).execute()
+    return response.data[0]["id"]
 
 
 def update_campaign_stats(campaign_id, total_found, total_approved, total_discarded, status="completed"):
     """Atualiza as estatísticas de uma campanha finalizada."""
-    conn = get_connection()
-    conn.execute("""
-        UPDATE campaigns SET total_found=?, total_approved=?, total_discarded=?, status=?, finished_at=?
-        WHERE id=?
-    """, (total_found, total_approved, total_discarded, status, datetime.now().isoformat(), campaign_id))
-    conn.commit()
-    conn.close()
+    supabase = get_connection()
+    data = {
+        "total_found": total_found,
+        "total_approved": total_approved,
+        "total_discarded": total_discarded,
+        "status": status,
+        "finished_at": datetime.now().isoformat()
+    }
+    supabase.table("campaigns").update(data).eq("id", campaign_id).execute()
 
 
 def get_all_campaigns():
     """Retorna todas as campanhas ordenadas pela mais recente."""
-    conn = get_connection()
-    rows = conn.execute("SELECT * FROM campaigns ORDER BY created_at DESC").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    supabase = get_connection()
+    response = supabase.table("campaigns").select("*").order("created_at", desc=True).execute()
+    return response.data
 
 
 def get_campaign(campaign_id):
     """Retorna uma campanha pelo ID."""
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    supabase = get_connection()
+    response = supabase.table("campaigns").select("*").eq("id", campaign_id).execute()
+    return response.data[0] if response.data else None
 
 
 def delete_campaign(campaign_id):
-    """Exclui uma campanha e seus leads."""
-    conn = get_connection()
-    conn.execute("DELETE FROM leads WHERE campaign_id=?", (campaign_id,))
-    conn.execute("DELETE FROM campaigns WHERE id=?", (campaign_id,))
-    conn.commit()
-    conn.close()
+    """Exclui uma campanha (e seus leads graças ao CASCADE no banco)."""
+    supabase = get_connection()
+    supabase.table("campaigns").delete().eq("id", campaign_id).execute()
 
 
 # ─── Lead CRUD ───────────────────────────────────────────────
 
 def insert_lead(campaign_id, lead_data):
     """Insere um lead aprovado no banco."""
-    conn = get_connection()
-    tags_json = json.dumps(lead_data.get("tags", []), ensure_ascii=False)
-    conn.execute("""
-        INSERT INTO leads (campaign_id, name, link, description, has_phone, has_email, 
-                          score, reason, tags, decision_maker, whatsapp_ready, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)
-    """, (
-        campaign_id,
-        lead_data.get("name", "Perfil Encontrado"),
-        lead_data.get("link", ""),
-        lead_data.get("description", ""),
-        1 if lead_data.get("has_phone") else 0,
-        1 if lead_data.get("has_email") else 0,
-        lead_data.get("score", 0),
-        lead_data.get("reason", ""),
-        tags_json,
-        lead_data.get("decision_maker", ""),
-        1 if lead_data.get("whatsapp_ready") else 0,
-        datetime.now().isoformat()
-    ))
-    conn.commit()
-    conn.close()
+    supabase = get_connection()
+    
+    tags = lead_data.get("tags", [])
+    
+    data = {
+        "campaign_id": campaign_id,
+        "name": lead_data.get("name", "Perfil Encontrado"),
+        "link": lead_data.get("link", ""),
+        "description": lead_data.get("description", ""),
+        "has_phone": bool(lead_data.get("has_phone")),
+        "has_email": bool(lead_data.get("has_email")),
+        "score": int(lead_data.get("score", 0)),
+        "reason": str(lead_data.get("reason", "")),
+        "tags": tags, # Supabase aceita array diretamente em JSONB
+        "decision_maker": str(lead_data.get("decision_maker", "")),
+        "whatsapp_ready": bool(lead_data.get("whatsapp_ready")),
+        "status": 'approved',
+        "created_at": datetime.now().isoformat()
+    }
+    supabase.table("leads").insert(data).execute()
 
 
 def get_leads_by_campaign(campaign_id):
     """Retorna todos os leads de uma campanha."""
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM leads WHERE campaign_id=? ORDER BY score DESC", (campaign_id,)
-    ).fetchall()
-    conn.close()
-    results = []
-    for r in rows:
-        d = dict(r)
-        try:
-            d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-        except json.JSONDecodeError:
-            d["tags"] = []
-        results.append(d)
-    return results
+    supabase = get_connection()
+    response = supabase.table("leads").select("*").eq("campaign_id", campaign_id).order("score", desc=True).execute()
+    return response.data
 
 
 def get_all_leads():
     """Retorna todos os leads do banco."""
-    conn = get_connection()
-    rows = conn.execute("SELECT * FROM leads ORDER BY score DESC").fetchall()
-    conn.close()
-    results = []
-    for r in rows:
-        d = dict(r)
-        try:
-            d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-        except json.JSONDecodeError:
-            d["tags"] = []
-        results.append(d)
-    return results
+    supabase = get_connection()
+    response = supabase.table("leads").select("*").order("score", desc=True).execute()
+    return response.data
 
 
 # ─── Settings ────────────────────────────────────────────────
 
 def get_setting(key, default=""):
     """Retorna o valor de uma configuração."""
-    conn = get_connection()
-    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    conn.close()
-    return row["value"] if row else default
+    supabase = get_connection()
+    response = supabase.table("settings").select("value").eq("key", key).execute()
+    return response.data[0]["value"] if response.data else default
 
 
 def set_setting(key, value):
     """Salva ou atualiza uma configuração."""
-    conn = get_connection()
-    conn.execute("""
-        INSERT INTO settings (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value=excluded.value
-    """, (key, value))
-    conn.commit()
-    conn.close()
-
-
-# Inicializar automaticamente ao importar
-init_db()
+    supabase = get_connection()
+    # Supabase UPSERT require table PKs and data
+    data = {"key": key, "value": value}
+    supabase.table("settings").upsert(data).execute()
