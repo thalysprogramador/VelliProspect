@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: velli-prospect
+    env: docker
+    plan: free
+    region: ohio
+    branch: main
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: "8080"
