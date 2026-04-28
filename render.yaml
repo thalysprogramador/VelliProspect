@@ -9,4 +9,6 @@ services:
     dockerfilePath: Dockerfile
     envVars:
       - key: PORT
-        value: "8080"
+        value: "8000"
+      - key: FLET_FORCE_WEB_SERVER
+        value: "true"
