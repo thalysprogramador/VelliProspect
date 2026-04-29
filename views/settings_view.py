@@ -20,14 +20,9 @@ ERROR = "#F87171"
 def build_settings_view(page: ft.Page):
     """Constrói a view de configurações."""
 
-    # Carregar configurações salvas (Prioriza Client Storage na Web)
-    saved_key = ""
-    if page.web:
-        saved_key = page.client_storage.get("gemini_api_key") or ""
-    
-    if not saved_key:
-        import os
-        saved_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key", "")
+    # Carregar configurações salvas (Supabase + env var)
+    import os
+    saved_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key", "")
 
     api_key_field = ft.TextField(
         label="Gemini API Key",
@@ -59,9 +54,7 @@ def build_settings_view(page: ft.Page):
         # Salva no banco local (Desktop/Mobile)
         set_setting("gemini_api_key", key)
         
-        # Salva no navegador (Web)
-        if page.web:
-            page.client_storage.set("gemini_api_key", key)
+        # Tudo salvo no Supabase (persistente na nuvem)
             
         status_text.value = "✅ API Key salva individualmente!"
         status_text.color = SUCCESS
