@@ -1,4 +1,5 @@
 flet
+flet-web
 google-genai
 ddgs
 aiofiles
