@@ -229,9 +229,8 @@ def main(page: ft.Page):
 # ─── Entry Point ──────────────────────────────────────────────
 if __name__ == "__main__":
     import os
-    # Render injeta PORT=10000. Repassamos para o Flet via env vars.
+    # Render injeta PORT (default 10000). Repassamos para o Flet.
     port = int(os.environ.get("PORT", 10000))
     os.environ["FLET_SERVER_PORT"] = str(port)
-    os.environ["FLET_SERVER_IP"] = "0.0.0.0"
-    os.environ.setdefault("FLET_FORCE_WEB_SERVER", "true")
     ft.run(main, assets_dir="assets")
+
