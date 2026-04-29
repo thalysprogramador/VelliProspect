@@ -454,14 +454,8 @@ def build_prospect_view(page: ft.Page):
             return
 
         from database import get_setting
-        # Prioriza a chave do navegador (isolamento multi-usuário na Web)
         import os
-        api_key = ""
-        if page.web:
-            api_key = page.client_storage.get("gemini_api_key")
-        
-        if not api_key:
-            api_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key")
+        api_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key")
 
         niche = niche_field.value
         region = region_field.value
