@@ -1,12 +1,16 @@
 services:
   - type: web
     name: velli-prospect
-    env: docker
+    runtime: python
     plan: free
     region: ohio
     branch: main
-    dockerContext: .
-    dockerfilePath: Dockerfile
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
       - key: FLET_FORCE_WEB_SERVER
         value: "true"
+      - key: FLET_SERVER_IP
+        value: "0.0.0.0"
