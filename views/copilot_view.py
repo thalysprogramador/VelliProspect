@@ -210,14 +210,8 @@ def build_copilot_view(page: ft.Page):
         def get_response():
             nonlocal is_thinking
             from database import get_setting
-            
-            # Prioriza a chave do navegador (isolamento multi-usuário na Web)
-            api_key = ""
-            if page.web:
-                api_key = page.client_storage.get("gemini_api_key")
-            
-            if not api_key:
-                api_key = get_setting("gemini_api_key")
+            import os
+            api_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key")
             leads = get_all_leads()
 
             # Converter para formato esperado pelo copilot_chat
