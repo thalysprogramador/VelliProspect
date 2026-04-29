@@ -1,6 +1,6 @@
 flet
 google-genai
-duckduckgo_search
+ddgs
 aiofiles
 certifi
 pandas
