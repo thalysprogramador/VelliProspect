@@ -226,11 +226,15 @@ def main(page: ft.Page):
     page.update()
 
 
+# ─── ASGI App (para deploy web via Uvicorn) ──────────────────
+import flet.fastapi as flet_fastapi
+app = flet_fastapi.app(main, assets_dir="assets")
+
 # ─── Entry Point ──────────────────────────────────────────────
 if __name__ == "__main__":
     import os
-    # Render injeta PORT (default 10000). Repassamos para o Flet.
+    import uvicorn
     port = int(os.environ.get("PORT", 10000))
-    os.environ["FLET_SERVER_PORT"] = str(port)
-    ft.run(main, assets_dir="assets")
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
 
