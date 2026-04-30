@@ -285,4 +285,7 @@ Responda de forma objetiva, prática e útil. Use emojis com moderação. Seja c
         return response.text.strip()
 
     except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            return "⚠️ **Calma lá, velocista!** 😅\n\nO plano gratuito do Google permite até 15 interações por minuto e você atingiu esse limite. \n\n**Aguarde cerca de 40 a 60 segundos** e me mande a mensagem novamente!"
         return f"Erro no Copilot: {e}"
