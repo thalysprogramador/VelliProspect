@@ -1,13 +1,13 @@
-"""
-Velli Prospect V3 — Copilot View
-Assistente de IA integrado para ajudar com prospecção e vendas.
+﻿"""
+Velli Prospect V3 — Copilot View (Revisado)
+Assistente de IA integrado para ajudar com prospeccao e vendas.
 """
 import flet as ft
 import threading
 from ai_evaluator import copilot_chat
 from database import get_all_leads, get_setting
 
-# ─── Design System ───────────────────────────────────────────
+# Design System
 BG_PRIMARY = "#0A0A0A"
 BG_CARD = "#141414"
 BORDER_SUBTLE = "#2A2A2A"
@@ -18,7 +18,7 @@ ACCENT = "#FFFFFF"
 
 
 def build_copilot_view(page: ft.Page):
-    """Constrói a view do Copilot (assistente de IA)."""
+    """Constroi a view do Copilot (assistente de IA)."""
 
     messages_list = ft.ListView(
         spacing=12,
@@ -51,13 +51,13 @@ def build_copilot_view(page: ft.Page):
                 ),
                 ft.Container(height=4),
                 ft.Text(
-                    "Olá! 👋 Sou a VELLIX IA, sua inteligência artificial focada em prospecção.\n\n"
+                    "Ola! \U0001f44b Sou a VELLIX IA, sua inteligencia artificial focada em prospeccao.\n\n"
                     "Posso te ajudar com:\n"
-                    "• Analisar seus leads e sugerir os melhores\n"
-                    "• Criar pitches de vendas personalizados\n"
-                    "• Dar dicas de abordagem para cada prospect\n"
-                    "• Sugerir estratégias de outbound\n\n"
-                    "Me pergunte qualquer coisa sobre seus leads ou estratégia de vendas!",
+                    "\u2022 Analisar seus leads e sugerir os melhores\n"
+                    "\u2022 Criar pitches de vendas personalizados\n"
+                    "\u2022 Dar dicas de abordagem para cada prospect\n"
+                    "\u2022 Sugerir estrategias de outbound\n\n"
+                    "Me pergunte qualquer coisa sobre seus leads ou estrategia de vendas!",
                     size=13, color=TEXT_SECONDARY, font_family="Inter",
                     selectable=True,
                 ),
@@ -80,7 +80,7 @@ def build_copilot_view(page: ft.Page):
     ]
 
     def on_suggestion_click(e):
-        """Envia uma sugestão como mensagem."""
+        """Envia uma sugestao como mensagem."""
         input_field.value = e.control.data
         send_message(None)
 
@@ -117,13 +117,13 @@ def build_copilot_view(page: ft.Page):
     )
 
     def add_user_message(text):
-        """Adiciona uma mensagem do usuário na lista."""
+        """Adiciona uma mensagem do usuario na lista."""
         msg = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Row(
                         controls=[
-                            ft.Text("Você", size=11, weight=ft.FontWeight.W_600,
+                            ft.Text("Voce", size=11, weight=ft.FontWeight.W_600,
                                    color=TEXT_MUTED, font_family="Inter"),
                         ],
                         alignment=ft.MainAxisAlignment.END,
@@ -190,7 +190,7 @@ def build_copilot_view(page: ft.Page):
         page.update()
 
     def send_message(e):
-        """Envia a mensagem do usuário e obtém resposta do Copilot."""
+        """Envia a mensagem do usuario e obtem resposta do Copilot."""
         nonlocal is_thinking
 
         text = input_field.value
@@ -209,12 +209,23 @@ def build_copilot_view(page: ft.Page):
 
         def get_response():
             nonlocal is_thinking
-            from database import get_setting
             import os
+            from database import get_setting
             api_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key")
+
+            if not api_key:
+                thinking_indicator.visible = False
+                add_copilot_message(
+                    "\u26a0\ufe0f **API Key nao configurada!**\n\n"
+                    "Va ate a aba **Config** (icone de engrenagem) e cole sua chave do Google AI Studio.\n\n"
+                    "E gratis! Acesse [aistudio.google.com](https://aistudio.google.com) para criar a sua."
+                )
+                is_thinking = False
+                page.update()
+                return
+
             leads = get_all_leads()
 
-            # Converter para formato esperado pelo copilot_chat
             leads_context = []
             for lead in leads[:20]:
                 leads_context.append({
@@ -286,7 +297,7 @@ def build_copilot_view(page: ft.Page):
                                     controls=[
                                         ft.Text("VELLIX IA", size=20, weight=ft.FontWeight.W_700,
                                                color=TEXT_PRIMARY, font_family="Inter"),
-                                        ft.Text("Inteligência Oficial B2B", size=12,
+                                        ft.Text("Inteligencia Oficial B2B", size=12,
                                                color=TEXT_SECONDARY, font_family="Inter"),
                                     ],
                                     spacing=2,
@@ -324,7 +335,7 @@ def build_copilot_view(page: ft.Page):
         expand=True,
         spacing=0,
     )
-    
+
     view = ft.Container(
         content=view_col,
         padding=ft.Padding.symmetric(horizontal=24, vertical=20),
