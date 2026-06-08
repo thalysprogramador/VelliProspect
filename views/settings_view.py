@@ -1,11 +1,12 @@
-"""
-Velli Prospect V3 — Settings View
-Configurações do aplicativo (API Key, preferências).
+﻿"""
+Velli Prospect V3 — Settings View (Revisado)
+Configuracoes do aplicativo (API Key, preferencias).
 """
 import flet as ft
-from database import get_setting, set_setting
+from database import get_setting, set_setting, get_connection
 
-# ─── Design System ───────────────────────────────────────────
+
+# Design System
 BG_PRIMARY = "#0A0A0A"
 BG_CARD = "#141414"
 BORDER_SUBTLE = "#2A2A2A"
@@ -18,9 +19,9 @@ ERROR = "#F87171"
 
 
 def build_settings_view(page: ft.Page):
-    """Constrói a view de configurações."""
+    """Constroi a view de configuracoes."""
 
-    # Carregar configurações salvas (Supabase + env var)
+    # Carregar configuracoes salvas (Supabase + env var)
     import os
     saved_key = os.environ.get("GEMINI_API_KEY") or get_setting("gemini_api_key", "")
 
@@ -43,24 +44,21 @@ def build_settings_view(page: ft.Page):
     status_text = ft.Text("", size=12, font_family="Inter")
 
     def save_api_key(e):
-        """Salva a API Key (No banco local e no Client Storage se Web)."""
+        """Salva a API Key no Supabase."""
         key = api_key_field.value.strip()
         if not key:
-            status_text.value = "⚠️ A chave não pode estar vazia."
+            status_text.value = "\u26a0\ufe0f A chave nao pode estar vazia."
             status_text.color = ERROR
             page.update()
             return
 
-        # Salva no banco local (Desktop/Mobile)
         set_setting("gemini_api_key", key)
-        
-        # Tudo salvo no Supabase (persistente na nuvem)
-            
-        status_text.value = "✅ API Key salva individualmente!"
+
+        status_text.value = "\u2705 API Key salva com sucesso!"
         status_text.color = SUCCESS
 
         page.snack_bar = ft.SnackBar(
-            content=ft.Text("🔑 API Key configurada!", color=TEXT_PRIMARY, font_family="Inter"),
+            content=ft.Text("\U0001f511 API Key configurada!", color=TEXT_PRIMARY, font_family="Inter"),
             bgcolor=BG_CARD,
         )
         page.snack_bar.open = True
@@ -70,12 +68,12 @@ def build_settings_view(page: ft.Page):
         """Testa se a API Key funciona."""
         key = api_key_field.value.strip()
         if not key:
-            status_text.value = "⚠️ Insira uma chave primeiro."
+            status_text.value = "\u26a0\ufe0f Insira uma chave primeiro."
             status_text.color = ERROR
             page.update()
             return
 
-        status_text.value = "⏳ Testando conexão..."
+        status_text.value = "\u231b Testando conexao..."
         status_text.color = TEXT_SECONDARY
         page.update()
 
@@ -87,32 +85,42 @@ def build_settings_view(page: ft.Page):
                 contents='Responda apenas: "OK"',
             )
             if response.text:
-                status_text.value = f"✅ Conexão OK! Resposta: {response.text.strip()[:30]}"
+                status_text.value = f"\u2705 Conexao OK! Resposta: {response.text.strip()[:30]}"
                 status_text.color = SUCCESS
             else:
-                status_text.value = "⚠️ A API respondeu, mas sem conteúdo."
+                status_text.value = "\u26a0\ufe0f A API respondeu, mas sem conteudo."
                 status_text.color = ERROR
         except Exception as ex:
-            status_text.value = f"❌ Erro: {str(ex)[:80]}"
-            status_text.color = ERROR
+            error_msg = str(ex)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                status_text.value = "\u26a0\ufe0f Limite de velocidade atingido. Aguarde 1 minuto e tente novamente."
+                status_text.color = "#FBBF24"
+            else:
+                status_text.value = f"\u274c Erro: {str(ex)[:80]}"
+                status_text.color = ERROR
 
         page.update()
 
     def clear_data(e):
-        """Limpa todos os dados locais."""
-        from database import get_connection
-        conn = get_connection()
-        conn.execute("DELETE FROM leads")
-        conn.execute("DELETE FROM campaigns")
-        conn.commit()
-        conn.close()
+        """Limpa todos os dados do Supabase."""
+        try:
+            supabase = get_connection()
+            supabase.table("leads").delete().neq("id", 0).execute()
+            supabase.table("campaigns").delete().neq("id", 0).execute()
 
-        page.snack_bar = ft.SnackBar(
-            content=ft.Text("🗑️ Dados limpos!", color=TEXT_PRIMARY, font_family="Inter"),
-            bgcolor=BG_CARD,
-        )
-        page.snack_bar.open = True
-        page.update()
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("\U0001f5d1\ufe0f Dados limpos!", color=TEXT_PRIMARY, font_family="Inter"),
+                bgcolor=BG_CARD,
+            )
+            page.snack_bar.open = True
+            page.update()
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text(f"Erro ao limpar: {ex}", color=ERROR, font_family="Inter"),
+                bgcolor=BG_CARD,
+            )
+            page.snack_bar.open = True
+            page.update()
 
     view_main = ft.Column(
         controls=[
@@ -120,9 +128,9 @@ def build_settings_view(page: ft.Page):
             ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Text("Configurações", size=24, weight=ft.FontWeight.W_700,
+                        ft.Text("Configuracoes", size=24, weight=ft.FontWeight.W_700,
                                color=TEXT_PRIMARY, font_family="Inter"),
-                        ft.Text("Gerencie suas credenciais e preferências",
+                        ft.Text("Gerencie suas credenciais e preferencias",
                                size=13, color=TEXT_SECONDARY, font_family="Inter"),
                     ],
                     spacing=4,
@@ -210,10 +218,10 @@ def build_settings_view(page: ft.Page):
                         ft.Container(height=4),
                         ft.Text(
                             "1. Acesse: aistudio.google.com\n"
-                            "2. Faça login com sua conta Google\n"
+                            "2. Faca login com sua conta Google\n"
                             "3. Clique em 'Get API Key'\n"
                             "4. Crie uma nova chave e cole aqui\n\n"
-                            "💡 A chave é gratuita e permite centenas de consultas/dia.",
+                            "\U0001f4a1 A chave e gratuita e permite centenas de consultas/dia.",
                             size=12, color=TEXT_SECONDARY, font_family="Inter",
                             selectable=True,
                         ),
@@ -257,7 +265,7 @@ def build_settings_view(page: ft.Page):
                             ),
                             on_click=clear_data,
                         ),
-                        ft.Text("Apaga todas as campanhas e leads salvos. Isso não pode ser desfeito.",
+                        ft.Text("Apaga todas as campanhas e leads salvos. Isso nao pode ser desfeito.",
                                size=11, color=TEXT_MUTED, font_family="Inter"),
                     ],
                     spacing=4,
@@ -276,7 +284,7 @@ def build_settings_view(page: ft.Page):
                     controls=[
                         ft.Text("VELLI PROSPECT V3", size=14, weight=ft.FontWeight.W_800,
                                color=TEXT_MUTED, font_family="Inter"),
-                        ft.Text("Software de Prospecção Inteligente B2B",
+                        ft.Text("Software de Prospeccao Inteligente B2B",
                                size=11, color=TEXT_MUTED, font_family="Inter"),
                         ft.Text("Powered by Google Gemini AI",
                                size=10, color=TEXT_MUTED, font_family="Inter"),
@@ -292,12 +300,11 @@ def build_settings_view(page: ft.Page):
         expand=True,
         spacing=0,
     )
-    
+
     view = ft.Container(
         content=view_main,
         padding=ft.Padding.symmetric(horizontal=24, vertical=20),
         expand=True,
     )
-
 
     return view
