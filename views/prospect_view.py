@@ -1,13 +1,14 @@
 ﻿"""
-Velli Prospect V3 — Prospect View (Revisado)
+Velli Prospect V3 — Prospect View (Revisado v2)
 Tela principal de configuracao, execucao de prospeccao e filtros de segmentacao.
 """
 import flet as ft
 import threading
 import time
 import base64
+import traceback
 from scraper import scrape_leads, get_available_sources
-from ai_evaluator import evaluate_lead, evaluate_leads_batch
+from ai_evaluator import evaluate_leads_batch
 from database import update_campaign_stats
 from persistence import get_campaigns, save_campaign, add_lead_to_campaign
 from views.copilot_view import build_copilot_view
@@ -46,6 +47,7 @@ TAG_COLORS = {
     "Tem Redes Sociais": "#3B82F6",
     "Erro": "#6B7280",
     "Erro de API": "#EF4444",
+    "Avaliacao Incompleta": "#6B7280",
 }
 
 
@@ -225,7 +227,7 @@ def build_prospect_view(page: ft.Page):
 
     criteria_field = ft.TextField(
         label="Instrucoes para a IA (Personalizado)",
-        value="Procure empresas que parecem pequenas ou nao tem site profissional. Exclua franquias.",
+        value="Avalie o potencial deste negocio para comprar servicos de marketing digital. De nota alta se parecer pequeno ou sem presenca digital forte.",
         multiline=True,
         min_lines=3,
         border_color=BORDER_SUBTLE,
@@ -239,13 +241,13 @@ def build_prospect_view(page: ft.Page):
     )
 
     min_score_slider = ft.Slider(
-        min=1, max=10, divisions=9, value=7,
+        min=1, max=10, divisions=9, value=5,
         label="{value}",
         active_color=ACCENT,
         inactive_color=BORDER_SUBTLE,
         thumb_color=ACCENT,
     )
-    min_score_label = ft.Text("Nota Minima: 7", size=12, color=TEXT_SECONDARY, font_family="Inter")
+    min_score_label = ft.Text("Nota Minima: 5", size=12, color=TEXT_SECONDARY, font_family="Inter")
 
     def on_slider_change(e):
         min_score_label.value = f"Nota Minima: {int(e.control.value)}"
@@ -269,7 +271,7 @@ def build_prospect_view(page: ft.Page):
 
     require_contact = ft.Checkbox(
         label="Exigir telefone/e-mail",
-        value=True,
+        value=False,
         fill_color={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: "transparent"},
         label_style=ft.TextStyle(color=TEXT_SECONDARY, size=12, font_family="Inter"),
     )
@@ -316,7 +318,7 @@ def build_prospect_view(page: ft.Page):
 
     filter_tag = ft.Dropdown(
         label="Tag Especifica",
-        options=[ft.dropdown.Option("Todas")] + [ft.dropdown.Option(t) for t in TAG_COLORS.keys() if t != "Erro"],
+        options=[ft.dropdown.Option("Todas")] + [ft.dropdown.Option(t) for t in TAG_COLORS.keys() if t not in ("Erro", "Erro de API", "Avaliacao Incompleta")],
         value="Todas",
         width=200,
         border_color=BORDER_SUBTLE,
@@ -353,8 +355,8 @@ def build_prospect_view(page: ft.Page):
 
     filters_section = ft.Container(
         content=ft.Column([
-            ft.Row([ft.Icon(ft.Icons.FILTER_LIST, size=16, color=TEXT_SECONDARY), ft.Text("FILTROS RÁPIDOS", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY)]),
-            ft.Row([filter_type, filter_tag]),
+            ft.Row([ft.Icon(ft.Icons.FILTER_LIST, size=16, color=TEXT_SECONDARY), ft.Text("FILTROS RAPIDOS", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY)]),
+            ft.Row([filter_type, filter_tag], spacing=12),
             filter_status
         ]),
         bgcolor=BG_CARD,
@@ -431,13 +433,13 @@ def build_prospect_view(page: ft.Page):
         source = source_dropdown.value
 
         if not niche or not region:
-            page.snack_bar = ft.SnackBar(content=ft.Text("Preencha Nicho e Regiao."))
+            page.snack_bar = ft.SnackBar(content=ft.Text("Preencha Nicho e Regiao.", color=TEXT_PRIMARY, font_family="Inter"), bgcolor=BG_CARD)
             page.snack_bar.open = True
             page.update()
             return
 
         if not api_key:
-            page.snack_bar = ft.SnackBar(content=ft.Text("Configure a API Key em Config."))
+            page.snack_bar = ft.SnackBar(content=ft.Text("Configure a API Key em Config.", color=TEXT_PRIMARY, font_family="Inter"), bgcolor=BG_CARD)
             page.snack_bar.open = True
             page.update()
             return
@@ -463,23 +465,53 @@ def build_prospect_view(page: ft.Page):
         def run_in_background():
             nonlocal is_running
             try:
+                total_found = 0
+
                 def progress_cb(current, total, lead_name):
-                    progress_bar.value = current / total
-                    status_text.value = f"Lendo perfil: {lead_name}"
-                    metrics_row.controls[0].content.controls[1].value = str(current)
-                    page.update()
+                    nonlocal total_found
+                    total_found = current
+                    try:
+                        progress_bar.value = current / total if total > 0 else 0
+                        status_text.value = f"Lendo perfil: {lead_name}"
+                        metrics_row.controls[0].content.controls[1].value = str(current)
+                        page.update()
+                    except Exception:
+                        pass
+
+                status_text.value = f"Buscando perfis de '{niche}' em '{region}'..."
+                page.update()
 
                 raw_leads = scrape_leads(niche, region, source, max_results=max_r, block_large_portals=block_portals.value, on_progress=progress_cb)
 
+                print(f"[View] Scraper retornou {len(raw_leads)} leads brutos")
+
                 if not raw_leads:
-                    status_text.value = "Nenhum perfil encontrado com esses termos."
+                    status_text.value = "Nenhum perfil encontrado. Tente outro nicho, regiao ou fonte de busca."
+                    status_text.color = WARNING
+                    progress_bar.visible = False
+                    metrics_row.controls[0].content.controls[1].value = "0"
+                    page.update()
                     return
 
+                metrics_row.controls[0].content.controls[1].value = str(len(raw_leads))
+                page.update()
+
+                # Filtro de contato (opcional)
                 if require_contact.value:
+                    before_filter = len(raw_leads)
                     raw_leads = [l for l in raw_leads if l.get('_has_contact')]
-                    metrics_row.controls[0].content.controls[1].value = str(len(raw_leads))
+                    filtered_out = before_filter - len(raw_leads)
+                    print(f"[View] Filtro de contato: {before_filter} -> {len(raw_leads)} (removidos: {filtered_out})")
+
+                    if not raw_leads:
+                        status_text.value = f"Encontramos {before_filter} perfis, mas nenhum tinha telefone/email visivel. Desmarque 'Exigir telefone' e tente novamente."
+                        status_text.color = WARNING
+                        progress_bar.visible = False
+                        page.update()
+                        return
 
                 status_text.value = f"Avaliando {len(raw_leads)} leads com VELLIX IA..."
+                status_text.color = TEXT_SECONDARY
                 progress_bar.value = None
                 page.update()
 
@@ -488,11 +520,15 @@ def build_prospect_view(page: ft.Page):
                     "criteria": criteria, "min_score": min_s, "max_results": max_r
                 })
 
-                batch_size = 20
+                batch_size = 10
                 discarded = 0
 
                 for i in range(0, len(raw_leads), batch_size):
                     batch = raw_leads[i:i + batch_size]
+
+                    status_text.value = f"Avaliando lote {(i // batch_size) + 1} de {(len(raw_leads) + batch_size - 1) // batch_size}..."
+                    page.update()
+
                     evaluations = evaluate_leads_batch(batch, api_key, criteria)
 
                     for j, result in enumerate(evaluations):
@@ -501,10 +537,16 @@ def build_prospect_view(page: ft.Page):
 
                         if score >= min_s:
                             lead_doc = {
-                                "name": lead_data["Nome"], "link": lead_data["Link"], "description": lead_data["Descricao (Bio/Web)"],
-                                "has_phone": lead_data["Tem Telefone?"] == "Sim", "has_email": lead_data["Tem E-mail?"] == "Sim",
-                                "score": score, "reason": result.get("reason"), "tags": result.get("tags"),
-                                "decision_maker": result.get("decision_maker"), "whatsapp_ready": result.get("whatsapp_ready")
+                                "name": lead_data.get("Nome", "Desconhecido"),
+                                "link": lead_data.get("Link", ""),
+                                "description": lead_data.get("Descricao (Bio/Web)", ""),
+                                "has_phone": lead_data.get("Tem Telefone?") == "Sim",
+                                "has_email": lead_data.get("Tem E-mail?") == "Sim",
+                                "score": score,
+                                "reason": result.get("reason", ""),
+                                "tags": result.get("tags", []),
+                                "decision_maker": result.get("decision_maker", "Desconhecido"),
+                                "whatsapp_ready": result.get("whatsapp_ready", False)
                             }
                             add_lead_to_campaign(page, campaign_id, lead_doc)
                             approved_leads.append(lead_doc)
@@ -518,15 +560,24 @@ def build_prospect_view(page: ft.Page):
 
                         page.update()
 
+                    # Pequena pausa entre lotes para nao estourar rate limit
+                    if i + batch_size < len(raw_leads):
+                        time.sleep(1)
+
                 update_campaign_stats(campaign_id, len(raw_leads), len(approved_leads), discarded)
-                status_text.value = f"Concluido! {len(approved_leads)} aprovados."
+                status_text.value = f"Concluido! {len(approved_leads)} aprovados de {len(raw_leads)} avaliados."
+                status_text.color = SUCCESS if len(approved_leads) > 0 else WARNING
                 progress_bar.visible = False
                 download_button.visible = len(approved_leads) > 0
                 filters_section.visible = len(approved_leads) > 0
-                apply_filters(None)
+                if len(approved_leads) > 0:
+                    apply_filters(None)
 
             except Exception as e:
-                status_text.value = f"Erro: {e}"
+                print(f"[View] ERRO CRITICO: {e}")
+                traceback.print_exc()
+                status_text.value = f"Erro na varredura: {str(e)[:100]}"
+                status_text.color = ERROR
                 progress_bar.visible = False
             finally:
                 is_running = False
@@ -537,14 +588,14 @@ def build_prospect_view(page: ft.Page):
 
     view_main = ft.Column(
         controls=[
-            ft.Container(content=ft.Column([ft.Text("Nova Prospeccao", size=24, weight=ft.FontWeight.W_700), ft.Text("Configure varredura inteligente", size=13, color=TEXT_SECONDARY)]), padding=ft.Padding.only(bottom=20)),
+            ft.Container(content=ft.Column([ft.Text("Nova Prospeccao", size=24, weight=ft.FontWeight.W_700, color=TEXT_PRIMARY, font_family="Inter"), ft.Text("Configure varredura inteligente", size=13, color=TEXT_SECONDARY, font_family="Inter")]), padding=ft.Padding.only(bottom=20)),
             ft.Container(content=ft.Column([
-                ft.Row([ft.Icon(ft.Icons.LOCATION_SEARCHING, size=16, color=TEXT_SECONDARY), ft.Text("ALVO", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY)]),
+                ft.Row([ft.Icon(ft.Icons.LOCATION_SEARCHING, size=16, color=TEXT_SECONDARY), ft.Text("ALVO", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY, font_family="Inter")]),
                 ft.ResponsiveRow([ft.Column(col={"sm":12, "md":4}, controls=[niche_field]), ft.Column(col={"sm":12, "md":4}, controls=[region_field]), ft.Column(col={"sm":12, "md":4}, controls=[source_dropdown])])
             ]), bgcolor=BG_CARD, border=ft.Border.all(1, BORDER_SUBTLE), border_radius=14, padding=20),
             ft.Container(height=12),
             ft.Container(content=ft.Column([
-                ft.Row([ft.Icon(ft.Icons.PSYCHOLOGY, size=16, color=TEXT_SECONDARY), ft.Text("INTELIGENCIA", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY)]),
+                ft.Row([ft.Icon(ft.Icons.PSYCHOLOGY, size=16, color=TEXT_SECONDARY), ft.Text("INTELIGENCIA", size=11, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY, font_family="Inter")]),
                 criteria_field,
                 ft.ResponsiveRow([
                     ft.Column(col={"sm":12, "md":4}, controls=[ft.Column([min_score_label, min_score_slider])]),
@@ -586,6 +637,6 @@ def build_prospect_view(page: ft.Page):
             threading.Thread(target=hide_overlay, daemon=True).start()
         page.update()
 
-    fab = ft.Container(content=ft.FloatingActionButton(content=ft.Row([ft.Icon(ft.Icons.AUTO_AWESOME, size=18), ft.Text("VELLIX IA", weight=ft.FontWeight.W_700)], spacing=4), bgcolor=ACCENT, foreground_color=BG_PRIMARY, on_click=toggle_copilot, width=130), right=24, bottom=24)
+    fab = ft.Container(content=ft.FloatingActionButton(content=ft.Row([ft.Icon(ft.Icons.AUTO_AWESOME, size=18), ft.Text("VELLIX IA", weight=ft.FontWeight.W_700, font_family="Inter")], spacing=4), bgcolor=ACCENT, foreground_color=BG_PRIMARY, on_click=toggle_copilot, width=130), right=24, bottom=24)
 
     return ft.Stack(controls=[view, overlay, fab, drawer], expand=True)
