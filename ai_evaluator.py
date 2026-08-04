@@ -1,309 +1,209 @@
 ﻿"""
-Velli Prospect V3 — AI Evaluator (Revisado)
-Avaliacao inteligente de leads com Tags Semanticas expandidas, Score granular e retry automatico.
+Velli Prospect V3 — AI Evaluator
+Avaliacao inteligente de leads com Tags Semanticas, Score granular e plano de follow-up.
 """
 from google import genai
 import json
 import time
 
+def _friendly_rate_limit_msg():
+    return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-# ── Retry Logic ──────────────────────────────────────────────────
 def _call_gemini_with_retry(client, prompt, max_retries=3):
-    """Chama o Gemini com retry automatico para erros 429."""
-    for attempt in range(max_retries + 1):
+    delays = [5, 10, 20]
+    last_err = None
+    for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
                 contents=prompt,
+                config={"temperature": 0.2}
             )
-            return response
         except Exception as e:
-            error_msg = str(e)
-            if ("429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg) and attempt < max_retries:
-                wait_time = 5 * (2 ** attempt)  # 5s, 10s, 20s
-                print(f"Rate limit atingido, aguardando {wait_time}s... (tentativa {attempt + 1}/{max_retries})")
-                time.sleep(wait_time)
+            last_err = e
+            err_str = str(e).lower()
+            if "429" in err_str or "resource_exhausted" in err_str:
+                if attempt < max_retries - 1:
+                    time.sleep(delays[attempt])
                 continue
             raise
+    raise Exception(f"Falha apos {max_retries} tentativas: {last_err}")
 
-
-def _friendly_rate_limit_msg():
-    """Retorna mensagem amigavel para erro de rate limit."""
-    return (
-        "\u26a0\ufe0f **Limite de velocidade atingido!** \U0001f605\n\n"
-        "O plano gratuito do Google permite ate 15 interacoes por minuto "
-        "e voce atingiu esse limite.\n\n"
-        "**Aguarde cerca de 40 a 60 segundos** e tente novamente!"
-    )
-
-
-# ── Tags de Segmentacao ──────────────────────────────────────────
 ALL_TAGS = [
-    "Ticket Alto", "Ticket Baixo",
-    "Sem Site", "Boa Presenca Digital", "Baixa Presenca Digital",
-    "Franquia / Rede", "Novo no Mercado",
+    "Ticket Alto", "Ticket Baixo", "Sem Site", "Boa Presenca Digital",
+    "Baixa Presenca Digital", "Franquia / Rede", "Novo no Mercado",
     "Decisor Acessivel", "Alta Concorrencia", "Oportunidade Urgente",
     "E-commerce", "Servico Local", "B2B", "B2C",
-    "Alto Potencial Digital", "Tem Redes Sociais",
+    "Alto Potencial Digital", "Tem Redes Sociais"
 ]
 
 TAGS_DESCRIPTION = """
-Tags permitidas (use SOMENTE estas):
-   - "Ticket Alto" - Negocio com ticket medio alto
-   - "Ticket Baixo" - Micro-empreendedor ou operacao simples
-   - "Sem Site" - Nao aparenta ter site profissional
-   - "Boa Presenca Digital" - Ja tem presenca online razoavel
-   - "Baixa Presenca Digital" - Presenca digital fraca ou inexistente
-   - "Franquia / Rede" - Aparenta ser franquia ou rede grande
-   - "Novo no Mercado" - Negocio recente
-   - "Decisor Acessivel" - O decisor parece acessivel para contato direto
-   - "Alta Concorrencia" - Nicho com muita competicao local
-   - "Oportunidade Urgente" - Demonstra necessidade urgente de marketing
-   - "E-commerce" - Possui loja online ou vende pela internet
-   - "Servico Local" - Negocio de servico local (clinica, escritorio, etc)
-   - "B2B" - Vende para outras empresas
-   - "B2C" - Vende diretamente para consumidor final
-   - "Alto Potencial Digital" - Se beneficiaria muito de marketing digital
-   - "Tem Redes Sociais" - Possui perfis ativos em redes sociais
+- Ticket Alto: Negocios com produtos/servicos caros (imoveis, luxo, clinicas premium).
+- Ticket Baixo: Negocios com alto volume e margem menor (lanchonetes, lojinhas).
+- Sem Site: Nao possui dominio proprio .com.br (usa apenas instagram, linktree, etc).
+- Boa Presenca Digital: Usa fotos profissionais, conteudos bem trabalhados ou links.
+- Baixa Presenca Digital: Qualidade ruim, poucas informacoes, perfil desatualizado ou amador.
+- Franquia / Rede: E parte de uma franquia ou tem varias unidades.
+- Novo no Mercado: Parece ter sido criado recentemente.
+- Decisor Acessivel: O proprio dono costuma atender (pequenos negocios, autonomos).
+- Alta Concorrencia: Nicho muito saturado (ex: advogados, dentistas, corretores comuns).
+- Oportunidade Urgente: Precisa de marketing IMEDIATAMENTE pois sua presenca esta pessima.
+- E-commerce: Vende produtos online diretamente.
+- Servico Local: Presta servicos fisicos em uma regiao especifica (padaria, oficina).
+- B2B: Vende para outras empresas.
+- B2C: Vende para o consumidor final.
+- Alto Potencial Digital: Tem estrutura fisica boa mas o digital e muito ruim (potencial de melhora).
+- Tem Redes Sociais: Usa o Instagram, Facebook ou similar ativamente.
 """
-
 
 def evaluate_lead(lead, api_key, criteria):
-    """Avalia um lead usando Gemini e retorna um dicionario rico."""
     if not api_key:
-        return {
-            "score": 0,
-            "reason": "Chave de API nao configurada.",
-            "tags": [],
-            "decision_maker": "Desconhecido",
-            "whatsapp_ready": False
-        }
+        raise Exception("Configure sua chave de API nas configuracoes.")
+    
+    prompt = f"""Atue como um Especialista em Vendas B2B e Qualificacao de Leads de Marketing Digital.
+Avalie o seguinte lead com base nos dados obtidos e nos Criterios Personalizados do usuario.
 
+=== DADOS DO LEAD ===
+Nome: {lead.get('Nome', 'N/A')}
+Link: {lead.get('Link', 'N/A')}
+Descricao (Bio/Google): {lead.get('Descricao (Bio/Web)', 'N/A')}
+Tem Telefone visivel? {lead.get('Tem Telefone?', 'Nao')}
+Tem Email visivel? {lead.get('Tem E-mail?', 'Nao')}
+
+=== CRITERIOS DO USUARIO ===
+{criteria}
+
+=== TAREFA ===
+Voce deve retornar EXATAMENTE E APENAS um JSON valido (sem markdown, sem formatacao extra) com a seguinte estrutura:
+{{
+  "score": <int 1 a 10>,
+  "reason": "<string curta explicando o motivo da nota, baseada na Bio e nos criterios>",
+  "tags": ["<tag1>", "<tag2>", ...],
+  "decision_maker": "<Possivel cargo de quem atende: 'Proprietario', 'Atendente', 'Gerente', 'Agencia'>",
+  "whatsapp_ready": <bool indicando se parece ser um negocio pequeno/acessivel via whatsapp direto>
+}}
+
+=== REGRAS DAS TAGS ===
+Voce so pode escolher tags desta lista exata, dependendo do que identificar na Bio:
+{TAGS_DESCRIPTION}
+Escolha de 2 a 4 tags mais relevantes.
+"""
     try:
         client = genai.Client(api_key=api_key)
-
-        prompt = f"""Voce e um analista senior de prospeccao B2B em Marketing Digital.
-Analise esta empresa/perfil encontrado na internet e avalie o potencial de COMPRA de servicos de marketing.
-
-=== INSTRUCAO PERSONALIZADA DO USUARIO ===
-"{criteria}"
-
-=== DADOS DO PROSPECT ===
-- Nome: {lead.get('Nome', 'N/A')}
-- Descricao / Bio / Snippet: {lead.get('Descricao (Bio/Web)', lead.get('Descrição (Bio/Web)', 'N/A'))}
-- Link: {lead.get('Link', 'N/A')}
-- Tem telefone visivel: {'Sim' if lead.get('_has_contact') else 'Nao'}
-
-=== SUA ANALISE DEVE CONTER ===
-
-1. **score** (inteiro 0-10): Nota de potencial de compra.
-   - 0-3: Lead frio, sem potencial
-   - 4-6: Lead morno, tem potencial mas com ressalvas
-   - 7-8: Lead quente, bom prospect
-   - 9-10: Lead incandescente, prospect ideal
-
-2. **reason** (string, maximo 2 frases): Justificativa objetiva e curta.
-
-3. **tags** (lista de strings): Classifique o prospect com 2 a 5 tags.
-{TAGS_DESCRIPTION}
-
-4. **decision_maker** (string): Chute educado sobre quem e o decisor (ex: "Proprietario", "Gerente", "Socio", "Diretor de Marketing", "Desconhecido")
-
-5. **whatsapp_ready** (boolean): true se ha indicio de telefone/WhatsApp nos dados
-
-=== FORMATO DE RESPOSTA ===
-Retorne APENAS um JSON valido, sem markdown, sem explicacao extra:
-{{"score": 8, "reason": "...", "tags": ["...", "..."], "decision_maker": "...", "whatsapp_ready": true}}
-"""
-
         response = _call_gemini_with_retry(client, prompt)
-        text = response.text.strip()
-
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
-
-        result = json.loads(text.strip())
-
-        return {
-            "score": int(result.get("score", 0)),
-            "reason": str(result.get("reason", "Sem justificativa")),
-            "tags": list(result.get("tags", [])),
-            "decision_maker": str(result.get("decision_maker", "Desconhecido")),
-            "whatsapp_ready": bool(result.get("whatsapp_ready", False))
-        }
-
+        
+        text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(text)
+        
+        # Validation
+        data["score"] = int(data.get("score", 5))
+        data["tags"] = [t for t in data.get("tags", []) if t in ALL_TAGS]
+        
+        return data
+    except json.JSONDecodeError:
+        return {"score": 1, "reason": "Erro de leitura da IA (Formato Invalido).", "tags": ["Erro"], "decision_maker": "Desconhecido", "whatsapp_ready": False}
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            return {
-                "score": 0,
-                "reason": _friendly_rate_limit_msg(),
-                "tags": ["Erro de API"],
-                "decision_maker": "Desconhecido",
-                "whatsapp_ready": False
-            }
-        return {
-            "score": 0,
-            "reason": f"Erro na IA: {str(e)[:100]}",
-            "tags": ["Erro"],
-            "decision_maker": "Desconhecido",
-            "whatsapp_ready": False
-        }
-
+        err = str(e)
+        if "429" in err or "resource_exhausted" in err.lower():
+            return {"score": 1, "reason": _friendly_rate_limit_msg(), "tags": ["Erro de API"], "decision_maker": "Desconhecido", "whatsapp_ready": False}
+        return {"score": 1, "reason": f"Erro de API: {err}", "tags": ["Erro de API"], "decision_maker": "Desconhecido", "whatsapp_ready": False}
 
 def evaluate_leads_batch(leads, api_key, criteria):
-    """Avalia uma lista inteira de leads de uma so vez (Batching)."""
     if not api_key:
-        return [{
-            "score": 0,
-            "reason": "Chave de API nao configurada.",
-            "tags": [],
-            "decision_maker": "Desconhecido",
-            "whatsapp_ready": False
-        } for _ in leads]
+        return [{"score": 1, "reason": "Configure sua chave de API.", "tags": [], "decision_maker": "?", "whatsapp_ready": False} for _ in leads]
+        
+    leads_context = ""
+    for i, lead in enumerate(leads):
+        leads_context += f"--- LEAD {i} ---\nNome: {lead.get('Nome')}\nLink: {lead.get('Link')}\nBio: {lead.get('Descricao (Bio/Web)')}\nTelefone: {lead.get('Tem Telefone?')}\n\n"
+        
+    prompt = f"""Atue como Especialista de Vendas. Avalie os leads abaixo usando os Criterios do Usuario.
+    
+=== CRITERIOS ===
+{criteria}
 
+=== LEADS ===
+{leads_context}
+
+=== REGRAS DAS TAGS (Escolha de 2 a 4 por lead) ===
+{TAGS_DESCRIPTION}
+
+RETORNE EXATAMENTE UM JSON ARRAY. Nao adicione blocos de codigo ou outro texto.
+Exemplo:
+[
+  {{"score": 8, "reason": "Motivo curto", "tags": ["B2B", "Servico Local"], "decision_maker": "Proprietario", "whatsapp_ready": true}},
+  {{"score": 3, "reason": "Motivo curto", "tags": ["Alta Concorrencia"], "decision_maker": "Atendente", "whatsapp_ready": false}}
+]
+"""
     try:
         client = genai.Client(api_key=api_key)
-
-        leads_json_str = json.dumps([{
-            "id": i,
-            "Nome": l.get('Nome'),
-            "Descricao": l.get('Descricao (Bio/Web)', l.get('Descrição (Bio/Web)', '')),
-            "Link": l.get('Link'),
-            "_has_contact": l.get('_has_contact')
-        } for i, l in enumerate(leads)], ensure_ascii=False)
-
-        prompt = f"""Voce e um super-computador de IA analisando potenciais clientes B2B. AVALIE ESTES LEADS EM LOTE.
-=== CRITERIOS DE COMPRA ===
-"{criteria}"
-
-=== DADOS DOS PROSPECTS (JSON DE ENTRADA) ===
-{leads_json_str}
-
-=== INSTRUCOES ===
-Retorne APENAS um Array JSON. Cada objeto deve seguir este modelo EXATO:
-{{
-  "id": <id original do lead da entrada>,
-  "score": <nota 0-10 baseada no potencial>,
-  "reason": "<justificativa muito curta e objetiva: 1 frase so>",
-  "tags": ["<tag1>", "<tag2>"],
-  "decision_maker": "<provavel decisor>",
-  "whatsapp_ready": <true se _has_contact for true, senao false>
-}}
-{TAGS_DESCRIPTION}
-IMPORTANTE: NAO escreva mais NADA alem do array JSON (iniciando com [ e fechando com ]).
-"""
-
         response = _call_gemini_with_retry(client, prompt)
-        text = response.text.strip()
-
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
-
-        results_array = json.loads(text.strip())
-        evaluations = {r.get("id"): r for r in results_array}
-
-        final_results = []
+        
+        text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(text)
+        
+        # Validacao e correcao
+        results = []
         for i in range(len(leads)):
-            result = evaluations.get(i, {})
-            final_results.append({
-                "score": int(result.get("score", 0)),
-                "reason": str(result.get("reason", "Inconclusivo")),
-                "tags": list(result.get("tags", ["Avaliacao Incompleta"])),
-                "decision_maker": str(result.get("decision_maker", "Desconhecido")),
-                "whatsapp_ready": bool(result.get("whatsapp_ready", False))
-            })
-
-        return final_results
+            if i < len(data):
+                item = data[i]
+                item["score"] = int(item.get("score", 5))
+                item["tags"] = [t for t in item.get("tags", []) if t in ALL_TAGS]
+                results.append(item)
+            else:
+                results.append({"score": 1, "reason": "Erro: Lead omitido pela IA.", "tags": ["Avaliacao Incompleta"], "decision_maker": "?", "whatsapp_ready": False})
+        return results
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            return [{
-                "score": 0,
-                "reason": _friendly_rate_limit_msg(),
-                "tags": ["Erro de API"],
-                "decision_maker": "Desconhecido",
-                "whatsapp_ready": False
-            } for _ in leads]
-        print("Erro de batch via Gemini API:", e)
-        return [{
-            "score": 0,
-            "reason": f"Erro na super-avaliacao: {str(e)[:50]}",
-            "tags": ["Erro de API"],
-            "decision_maker": "Desconhecido",
-            "whatsapp_ready": False
-        } for _ in leads]
-
+        err = str(e)
+        if "429" in err or "resource_exhausted" in err.lower():
+            err_reason = _friendly_rate_limit_msg()
+            err_tag = "Erro de API"
+        else:
+            err_reason = f"Erro no lote: {err[:50]}"
+            err_tag = "Erro"
+            
+        return [{"score": 1, "reason": err_reason, "tags": [err_tag], "decision_maker": "Desconhecido", "whatsapp_ready": False} for _ in leads]
 
 def generate_pitch(lead_data, api_key, pitch_type="whatsapp"):
-    """Gera um pitch personalizado para abordar o lead."""
-    if not api_key:
-        return "Configure sua API Key primeiro."
+    if not api_key: return "Configure a API Key."
+    
+    formats = {
+        "whatsapp": "uma mensagem de WhatsApp (curta, quebra de padrao, informal e direta, no maximo 3 linhas)",
+        "email": "um e-mail frio de prospeccao (assunto curioso, gerando valor no corpo, chamada para acao leve)",
+        "instagram_dm": "uma Direct Message de Instagram (informal, baseada na bio deles, focada em gerar conexao e marcar call de 10 min)"
+    }
+    
+    prompt = f"""Aja como um top copywriter B2B. Crie {formats.get(pitch_type, formats['whatsapp'])} para este lead.
+O objetivo e vender servicos de Marketing Digital ou Assessoria. Nao venda o servico, venda a REUNIAO.
+    
+DADOS DO LEAD:
+Nome: {lead_data.get('name')}
+Bio: {lead_data.get('description')}
+Tags da IA: {', '.join(lead_data.get('tags', []))}
+Quem atende: {lead_data.get('decision_maker')}
+
+O pitch deve ser persuasivo, nao-corporativo, usar gatilhos de curiosidade. Nao inclua variaveis como [Seu Nome], use espacos em branco ou ja assuma o contexto de uma conversa."""
 
     try:
         client = genai.Client(api_key=api_key)
-
-        channel_instructions = {
-            "whatsapp": "WhatsApp (mensagem curta, informal mas profissional, com emoji)",
-            "email": "E-mail frio (assunto + corpo, formal mas empatico)",
-            "instagram_dm": "DM do Instagram (muito curta, informal, com emoji)"
-        }
-
-        channel = channel_instructions.get(pitch_type, channel_instructions["whatsapp"])
-
-        prompt = f"""Voce e um copywriter de vendas B2B especializado em abordagem fria.
-Crie uma mensagem de primeiro contato para o canal: {channel}
-
-=== DADOS DO PROSPECT ===
-- Nome da empresa: {lead_data.get('name', 'N/A')}
-- Descricao: {lead_data.get('description', 'N/A')}
-- Decisor provavel: {lead_data.get('decision_maker', 'Proprietario')}
-- Tags do perfil: {', '.join(lead_data.get('tags', []))}
-- Score Velli: {lead_data.get('score', 'N/A')}/10
-
-=== REGRAS ===
-- NAO mencione que voce e IA
-- NAO use cliches como "venho por meio desta"
-- Seja direto, humano e mostre que pesquisou sobre o negocio
-- Maximo 3 paragrafos curtos
-- Finalize com uma pergunta que incentive resposta
-
-Retorne APENAS o texto da mensagem, sem aspas, sem explicacao."""
-
         response = _call_gemini_with_retry(client, prompt)
         return response.text.strip()
-
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+        if "429" in str(e) or "resource_exhausted" in str(e).lower():
             return _friendly_rate_limit_msg()
         return f"Erro ao gerar pitch: {e}"
 
-
 def generate_approach_strategy(lead_data, api_key):
-    """Gera uma estrategia completa de abordagem para um lead."""
-    if not api_key:
-        return "Configure sua API Key primeiro."
+    if not api_key: return "Configure a API Key."
+    
+    prompt = f"""Crie uma Estrategia Pratica de Abordagem B2B para este lead.
+    
+DADOS DO LEAD:
+Nome: {lead_data.get('name')}
+Bio: {lead_data.get('description')}
+Tags: {', '.join(lead_data.get('tags', []))}
+Quem atende: {lead_data.get('decision_maker')}
 
-    try:
-        client = genai.Client(api_key=api_key)
-
-        prompt = f"""Voce e um consultor senior de vendas B2B e outbound marketing.
-Crie uma ESTRATEGIA COMPLETA de abordagem para este prospect.
-
-=== DADOS DO PROSPECT ===
-- Nome: {lead_data.get('name', 'N/A')}
-- Descricao: {lead_data.get('description', 'N/A')}
-- Decisor: {lead_data.get('decision_maker', 'Proprietario')}
-- Tags: {', '.join(lead_data.get('tags', []))}
-- Score: {lead_data.get('score', 'N/A')}/10
-- WhatsApp disponivel: {'Sim' if lead_data.get('whatsapp_ready') else 'Nao'}
-
-=== ENTREGUE ===
+Forneca a estrategia estruturada com:
 1. **Melhor Canal**: WhatsApp, Email, Instagram DM, LinkedIn ou Telefone
 2. **Melhor Horario**: Dia da semana e horario ideal para contato
 3. **Tom Recomendado**: Formal, Semi-formal ou Informal
@@ -312,18 +212,44 @@ Crie uma ESTRATEGIA COMPLETA de abordagem para este prospect.
 
 Seja pratico e objetivo. Use emojis com moderacao."""
 
+    try:
+        client = genai.Client(api_key=api_key)
         response = _call_gemini_with_retry(client, prompt)
         return response.text.strip()
-
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+        if "429" in str(e) or "resource_exhausted" in str(e).lower():
             return _friendly_rate_limit_msg()
         return f"Erro ao gerar estrategia: {e}"
 
+def generate_followup_plan(lead_data, api_key):
+    if not api_key: return "Configure a API Key."
+    
+    prompt = f"""Crie um Plano de Follow-up (cadencia de vendas) de 7 dias para este lead, focado em alta conversao B2B.
+    
+DADOS DO LEAD:
+Nome: {lead_data.get('name')}
+Bio: {lead_data.get('description')}
+Tags: {', '.join(lead_data.get('tags', []))}
+
+O plano deve indicar acoes claras para tentar contato. Retorne no seguinte formato:
+
+- **Dia 1 (Primeiro Contato):** Acao no Canal X. Mensagem: "..."
+- **Dia 3 (Geracao de Valor):** Acao no Canal Y. Foco em enviar um material ou dica sem pedir reuniao.
+- **Dia 5 (Reconexao):** Acao no Canal Z. Mensagem: "..."
+- **Dia 7 (Breakup Email/Mensagem de Despedida):** Mensagem educada encerrando as tentativas para gerar urgencia.
+
+Seja direto, persuasivo e use tecnicas modernas de Cold Outreach."""
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = _call_gemini_with_retry(client, prompt)
+        return response.text.strip()
+    except Exception as e:
+        if "429" in str(e) or "resource_exhausted" in str(e).lower():
+            return _friendly_rate_limit_msg()
+        return f"Erro ao gerar plano de follow-up: {e}"
 
 def copilot_chat(message, leads_context, api_key):
-    """Assistente Copilot que entende os leads e ajuda o usuario."""
     if not api_key:
         return "Configure sua API Key nas Configuracoes para usar o Copilot."
 
@@ -334,7 +260,7 @@ def copilot_chat(message, leads_context, api_key):
         if leads_context:
             for i, lead in enumerate(leads_context[:20]):
                 tags = ", ".join(lead.get("tags", [])) if isinstance(lead.get("tags"), list) else ""
-                leads_summary += f"  {i+1}. {lead.get('name', 'N/A')} \u2014 Score: {lead.get('score', 0)}/10 \u2014 Tags: {tags}\n"
+                leads_summary += f"  {i+1}. {lead.get('name', 'N/A')} - Score: {lead.get('score', 0)}/10 - Tags: {tags}\n"
         else:
             leads_summary = "  Nenhum lead carregado no momento.\n"
 
@@ -360,7 +286,6 @@ Responda de forma objetiva, pratica e util. Use emojis com moderacao. Seja como 
         return response.text.strip()
 
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+        if "429" in str(e) or "resource_exhausted" in str(e).lower():
             return _friendly_rate_limit_msg()
         return f"Erro no Copilot: {e}"
