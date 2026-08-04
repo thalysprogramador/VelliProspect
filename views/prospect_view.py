@@ -215,7 +215,7 @@ def build_prospect_view(page: ft.Page):
             
         api_key = get_setting("gemini_api_key", "")
         if not api_key:
-            page.snack_bar = ft.SnackBar(ft.Text("Vá em Configuracoes e adicione a API Key do Gemini."))
+            page.snack_bar = ft.SnackBar(ft.Text("Va em Configuracoes e adicione a API Key do Gemini."))
             page.snack_bar.open = True
             page.update()
             return
@@ -423,7 +423,7 @@ def build_prospect_view(page: ft.Page):
     )
 
     overlay = ft.Container(
-        bgcolor=ft.colors.with_opacity(0.5, "#000000"),
+        bgcolor="#80000000",
         expand=True,
         visible=False,
         on_click=lambda e: toggle_drawer()
