@@ -1,5 +1,5 @@
 ﻿"""
-Velli Prospect V3 — Scraper Engine (Revisado v2)
+Velli Prospect V3 — Scraper Engine (Revisado v3)
 Motor de busca robusto com fallback para servidores cloud.
 Usa DuckDuckGo Search (DDGS) com proxy automatico, retry e tratamento de erro visivel.
 """
@@ -7,63 +7,58 @@ import re
 import time
 import traceback
 
-# Tenta importar o pacote correto
 try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS
 
-# Dominios genericos que poluem buscas B2B
 BLOCKED_DOMAINS = [
-    'guiamais.com.br', 'apontador.com.br', 'facebook.com', 'linkedin.com',
-    'jusbrasil.com.br', 'g1.globo.com', 'wikipedia.org', 'youtube.com',
-    'tripadvisor.com.br', 'mercadolivre.com.br', 'shopee.com.br', 'reclameaqui.com.br',
-    'tiktok.com', 'pinterest.com', 'sympla.com.br', 'eventim.com.br', 'doctoralia.com.br',
-    'olx.com.br', 'enjoei.com.br', 'magazineluiza.com.br', 'amazon.com.br',
-    'yelp.com', 'glassdoor.com', 'glassdoor.com.br', 'indeed.com', 'indeed.com.br',
-    'catho.com.br', 'infojobs.com.br', 'vagas.com.br', 'trampos.co',
-    'twitter.com', 'x.com', 'gov.br',
+    "guiamais.com.br", "apontador.com.br", "facebook.com", "linkedin.com",
+    "jusbrasil.com.br", "g1.globo.com", "wikipedia.org", "youtube.com",
+    "tripadvisor.com.br", "mercadolivre.com.br", "shopee.com.br", "reclameaqui.com.br",
+    "tiktok.com", "pinterest.com", "sympla.com.br", "eventim.com.br", "doctoralia.com.br",
+    "olx.com.br", "enjoei.com.br", "magazineluiza.com.br", "amazon.com.br",
+    "yelp.com", "glassdoor.com", "glassdoor.com.br", "indeed.com", "indeed.com.br",
+    "catho.com.br", "infojobs.com.br", "vagas.com.br", "trampos.co",
+    "twitter.com", "x.com", "gov.br",
 ]
 
-# Fontes disponiveis com suas queries personalizadas
 SOURCES = {
     "Instagram": {
-        "query_template": 'site:instagram.com {niche} {region}',
+        "query_template": "site:instagram.com {niche} {region}",
         "skip_domain_filter": True,
     },
     "Google Maps / Sites": {
-        "query_template": '{niche} {region} contato telefone',
+        "query_template": "{niche} {region} contato telefone",
         "skip_domain_filter": False,
     },
     "LinkedIn": {
-        "query_template": 'site:linkedin.com/company {niche} {region}',
+        "query_template": "site:linkedin.com/company {niche} {region}",
         "skip_domain_filter": True,
     },
     "Google Meu Negocio": {
-        "query_template": '{niche} {region} site:google.com/maps',
+        "query_template": "{niche} {region} site:google.com/maps",
         "skip_domain_filter": True,
     },
     "Facebook": {
-        "query_template": 'site:facebook.com {niche} {region}',
+        "query_template": "site:facebook.com {niche} {region}",
         "skip_domain_filter": True,
     },
     "Sites Proprios": {
-        "query_template": '{niche} {region} contato site:.com.br',
+        "query_template": "{niche} {region} contato site:.com.br",
         "skip_domain_filter": False,
     },
 }
 
 ALL_SOURCES_KEY = "Todas as Fontes"
 
-
 def extract_contact_info(text):
-    """Extrai informacoes de contato do texto (telefone e e-mail)."""
     phone_patterns = [
-        r'(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:9\s?\d{4})[\s.\-]?\d{4}',
-        r'(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:\d{4})[\s.\-]?\d{4}',
-        r'(?:whatsapp|wpp|zap)[\s:]*(?:\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[\-\s.]?\d{4}',
+        r"(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:9\s?\d{4})[\s.\-]?\d{4}",
+        r"(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:\d{4})[\s.\-]?\d{4}",
+        r"(?:whatsapp|wpp|zap)[\s:]*(?:\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[\-\s.]?\d{4}",
     ]
-    email_pattern = r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}'
+    email_pattern = r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
 
     has_phone = False
     for pattern in phone_patterns:
@@ -73,23 +68,19 @@ def extract_contact_info(text):
 
     emails = re.findall(email_pattern, text, re.IGNORECASE)
     filtered_emails = [e for e in emails if not any(
-        x in e.lower() for x in ['noreply', 'no-reply', 'example.com', 'sentry', 'cloudflare']
+        x in e.lower() for x in ["noreply", "no-reply", "example.com", "sentry", "cloudflare"]
     )]
     has_email = bool(filtered_emails)
 
     return has_phone, has_email
 
-
 def is_blocked_domain(url, block_large_portals):
-    """Verifica se o URL pertence a um dominio bloqueado."""
     if not block_large_portals:
         return False
     url_lower = url.lower()
     return any(blocked in url_lower for blocked in BLOCKED_DOMAINS)
 
-
 def deduplicate_leads(leads):
-    """Remove leads duplicados baseado no link ou nome."""
     seen_links = set()
     seen_names = set()
     unique = []
@@ -111,26 +102,19 @@ def deduplicate_leads(leads):
 
     return unique
 
-
 def _clean_name(title):
-    """Limpa e extrai o nome real de um titulo de resultado de busca."""
-    for sep in [' - ', ' | ', ' \u2014 ', ' \u00b7 ', ' :: ']:
+    for sep in [" - ", " | ", " \u2014 ", " \u00b7 ", " :: "]:
         if sep in title:
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
 
-
 def _ddgs_search_with_retry(query, max_results, max_retries=3):
-    """Executa busca DDGS com retry e proxy automatico para servidores cloud."""
     last_error = None
-
-    # Estrategias de busca: sem proxy, com proxy lite, com proxy
-    proxy_options = [None, "socks5://0.0.0.0:0"]  # None = sem proxy
+    proxy_options = [None, "socks5://0.0.0.0:0"]
 
     for attempt in range(max_retries):
         for proxy in proxy_options:
             try:
-                # Tenta criar o cliente DDGS
                 if proxy and proxy != "socks5://0.0.0.0:0":
                     ddgs = DDGS(proxy=proxy)
                 else:
@@ -143,9 +127,8 @@ def _ddgs_search_with_retry(query, max_results, max_retries=3):
                     return results
                 else:
                     print(f"[Scraper] Busca vazia para: {query[:60]}... (tentativa {attempt+1})")
-                    # Se veio vazio, pode ser rate limit - espera um pouco
                     if attempt < max_retries - 1:
-                        time.sleep(2)
+                        time.sleep(5)
                     continue
 
             except Exception as e:
@@ -153,28 +136,22 @@ def _ddgs_search_with_retry(query, max_results, max_retries=3):
                 error_str = str(e).lower()
                 print(f"[Scraper] Erro tentativa {attempt+1}: {type(e).__name__}: {str(e)[:100]}")
 
-                # Se for rate limit do DuckDuckGo, espera mais
                 if "ratelimit" in error_str or "429" in error_str or "too many" in error_str:
                     wait = 5 * (attempt + 1)
                     print(f"[Scraper] Rate limit detectado, aguardando {wait}s...")
                     time.sleep(wait)
-                    break  # Sai do loop de proxy, vai pro proximo attempt
+                    break 
 
-                # Se for erro de conexao/DNS, tenta o proximo proxy
                 if "connect" in error_str or "name" in error_str or "dns" in error_str:
                     continue
 
-                # Outros erros, espera e tenta de novo
-                time.sleep(2)
+                time.sleep(5)
                 break
 
-    # Se todas as tentativas falharam, loga o erro e retorna lista vazia
     print(f"[Scraper] FALHA TOTAL apos {max_retries} tentativas. Ultimo erro: {last_error}")
     return []
 
-
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
-    """Busca leads de uma unica fonte."""
     leads = []
     source_config = SOURCES.get(source_key, SOURCES["Google Maps / Sites"])
     query = source_config["query_template"].format(niche=niche, region=region)
@@ -193,9 +170,9 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
         print(f"[Scraper] {len(results)} resultados brutos recebidos de '{source_key}'")
 
         for r in results:
-            url = r.get('href', '')
-            title = r.get('title', '')
-            snippet = r.get('body', '')
+            url = r.get("href", "")
+            title = r.get("title", "")
+            snippet = r.get("body", "")
 
             if not skip_domain and is_blocked_domain(url, block_large_portals):
                 continue
@@ -206,13 +183,13 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
             name = _clean_name(title)
 
             lead = {
-                'Nome': name,
-                'Link': url,
-                'Descricao (Bio/Web)': snippet,
-                'Tem Telefone?': "Sim" if has_phone else "Nao",
-                'Tem E-mail?': "Sim" if has_email else "Nao",
-                '_has_contact': has_phone or has_email,
-                '_source': source_key,
+                "Nome": name,
+                "Link": url,
+                "Descricao (Bio/Web)": snippet,
+                "Tem Telefone?": "Sim" if has_phone else "Nao",
+                "Tem E-mail?": "Sim" if has_email else "Nao",
+                "_has_contact": has_phone or has_email,
+                "_source": source_key,
             }
             leads.append(lead)
 
@@ -229,11 +206,7 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
-
 def scrape_leads(niche, region, source, max_results=100, block_large_portals=True, on_progress=None):
-    """
-    Busca leads na internet.
-    """
     max_results = min(max_results, 1000)
     print(f"\n{'='*60}")
     print(f"[Scraper] INICIO: nicho='{niche}', regiao='{region}', fonte='{source}', max={max_results}")
@@ -274,7 +247,5 @@ def scrape_leads(niche, region, source, max_results=100, block_large_portals=Tru
         print(f"[Scraper] FINAL: {len(leads)} leads unicos (apos dedup)")
         return leads[:max_results]
 
-
 def get_available_sources():
-    """Retorna a lista de fontes de busca disponiveis."""
     return list(SOURCES.keys()) + [ALL_SOURCES_KEY]
