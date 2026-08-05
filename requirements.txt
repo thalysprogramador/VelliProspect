@@ -1,5 +1,5 @@
-flet
-flet-web
+﻿flet==0.84.0
+flet-web==0.84.0
 google-genai
 ddgs
 aiofiles
