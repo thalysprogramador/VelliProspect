@@ -41,7 +41,7 @@ def build_copilot_view(page: ft.Page):
                     ft.Container(
                         content=ft.Text(text, color=BG_PRIMARY, font_family="Inter", size=14),
                         bgcolor=ACCENT,
-                        border_radius=ft.border_radius.only(top_left=15, top_right=15, bottom_left=15),
+                        border_radius=15,
                         padding=15,
                     )
                 ],
@@ -58,7 +58,7 @@ def build_copilot_view(page: ft.Page):
                         content=ft.Markdown(text, selectable=True, extension_set="gitHubWeb", 
                                             code_theme="atom-one-dark"),
                         bgcolor=BG_CARD,
-                        border_radius=ft.border_radius.only(top_left=15, top_right=15, bottom_right=15),
+                        border_radius=15,
                         padding=15,
                         width=min(int(page.width * 0.7) if page.width else 600, 600),
                     )
