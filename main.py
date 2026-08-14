@@ -76,7 +76,7 @@ def main(page: ft.Page):
 
     nav_logo = ft.Container(
         content=ft.Column([
-            ft.Image(src="logo_icon.png", width=44, height=44, fit=ft.ImageFit.CONTAIN),
+            ft.Image(src="logo_icon.png", width=44, height=44),
             ft.Container(height=4),
             ft.Text("VELLI", size=9, weight=ft.FontWeight.W_800, color=TEXT_MUTED, font_family="Inter"),
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
