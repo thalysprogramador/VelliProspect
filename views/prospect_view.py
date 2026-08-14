@@ -356,7 +356,7 @@ def build_prospect_view(page: ft.Page):
             ft.Container(
                 content=ft.Column([
                     ft.Row([
-                        ft.Image(src="logo_full.png", height=36, fit=ft.ImageFit.CONTAIN),
+                        ft.Image(src="logo_full.png", height=36),
                         ft.Container(expand=True),
                     ]),
                     ft.Container(height=8),
