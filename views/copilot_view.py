@@ -47,7 +47,7 @@ def build_copilot_view(page: ft.Page):
                         bgcolor=ACCENT,
                         border_radius=18,
                         padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-                        max_width=500,
+                        width=500,
                     )
                 ],
                 alignment=ft.MainAxisAlignment.END,
@@ -70,7 +70,7 @@ def build_copilot_view(page: ft.Page):
                         border=ft.Border.all(1, BORDER_SUBTLE),
                         border_radius=18,
                         padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-                        max_width=500,
+                        width=500,
                     )
                 ],
                 alignment=ft.MainAxisAlignment.START,
@@ -189,3 +189,4 @@ def build_copilot_view(page: ft.Page):
         expand=True,
         bgcolor=BG_PRIMARY,
     )
+
