@@ -1,4 +1,4 @@
-﻿"""
+"""
 Velli Prospect V3 — AI Evaluator
 Avaliacao inteligente de leads com Tags Semanticas, Score granular e plano de follow-up.
 """
