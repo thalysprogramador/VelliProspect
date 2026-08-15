@@ -55,7 +55,7 @@ def main(page: ft.Page):
         page.update()
 
     logo_widget = ft.Container(
-        content=ft.Image(src="logo_velli_white.png", width=140, height=45),
+        content=ft.Image(src="logo_icon.png", width=90, height=90),
         padding=ft.Padding.only(top=32, bottom=32, left=0, right=0),
         alignment=ft.Alignment.CENTER,
     )
