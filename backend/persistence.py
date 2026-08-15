@@ -1,4 +1,4 @@
-﻿from database import (
+from database import (
     get_all_campaigns as db_get_all, create_campaign as db_create,
     insert_lead as db_insert, delete_campaign as db_delete,
 )
