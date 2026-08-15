@@ -1,4 +1,4 @@
-﻿"""
+"""
 Velli Prospect V3 - Database Layer
 Supabase com fallback local via JSON.
 """
