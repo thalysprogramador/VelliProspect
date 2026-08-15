@@ -3,109 +3,82 @@ import flet.fastapi as flet_fastapi
 import os
 import uvicorn
 
-BG_PRIMARY = "#0A0A0A"
-BG_SURFACE = "#0F0F0F"
-BG_CARD = "#141414"
-BORDER_SUBTLE = "#1F1F1F"
-BORDER_HOVER = "#333333"
-TEXT_PRIMARY = "#FAFAFA"
-TEXT_SECONDARY = "#8A8A8A"
-TEXT_MUTED = "#555555"
-ACCENT = "#FFFFFF"
-NAV_BG = "#0D0D0D"
+# Apple-Inspired Design Tokens
+BG = "#000000"
+BG_SEC = "#0A0A0A"
+BG_CARD = "#1C1C1E"
+BG_HOVER = "#2C2C2E"
+BORDER = "#38383A"
+TX = "#F5F5F7"
+TX2 = "#86868B"
+TX3 = "#48484A"
+ACC = "#FFFFFF"
+GREEN = "#30D158"
+YEL = "#FFD60A"
+RED = "#FF453A"
 
 def main(page: ft.Page):
     page.title = "Velli Prospect"
     page.padding = 0
     page.spacing = 0
-    page.bgcolor = BG_PRIMARY
-
-    page.fonts = {
-        "Inter": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
-    }
-
-    page.theme = ft.Theme(
-        font_family="Inter",
-        color_scheme=ft.ColorScheme(
-            primary=ACCENT,
-            on_primary=BG_PRIMARY,
-            surface=BG_SURFACE,
-            on_surface=TEXT_PRIMARY,
-        ),
-    )
+    page.bgcolor = BG
+    page.fonts = {"Inter": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"}
+    page.theme = ft.Theme(font_family="Inter", color_scheme=ft.ColorScheme(primary=ACC, on_primary=BG, surface=BG_SEC, on_surface=TX))
     page.theme_mode = ft.ThemeMode.DARK
 
-    loaded_views = {}
+    views_cache = {}
+    content = ft.Container(expand=True, bgcolor=BG)
 
-    content_area = ft.Container(expand=True, bgcolor=BG_PRIMARY)
-
-    def load_view(index):
-        if index not in loaded_views:
+    def load_view(idx):
+        if idx not in views_cache:
             try:
-                if index == 0:
+                if idx == 0:
                     from views.prospect_view import build_prospect_view
-                    loaded_views[index] = build_prospect_view(page)
-                elif index == 1:
+                    views_cache[idx] = build_prospect_view(page)
+                elif idx == 1:
                     from views.campaigns_view import build_campaigns_view
-                    loaded_views[index] = build_campaigns_view(page)
-                elif index == 2:
+                    views_cache[idx] = build_campaigns_view(page)
+                elif idx == 2:
                     from views.copilot_view import build_copilot_view
-                    loaded_views[index] = build_copilot_view(page)
-                elif index == 3:
+                    views_cache[idx] = build_copilot_view(page)
+                elif idx == 3:
                     from views.settings_view import build_settings_view
-                    loaded_views[index] = build_settings_view(page)
+                    views_cache[idx] = build_settings_view(page)
             except Exception as ex:
-                print(f"[ERRO] View {index}: {ex}")
-                import traceback
-                traceback.print_exc()
-                loaded_views[index] = ft.Container(
-                    content=ft.Column([
-                        ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color="#F87171"),
-                        ft.Text(f"Erro ao carregar modulo: {ex}", color="#F87171", size=14),
-                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12),
-                    padding=40, expand=True, alignment=ft.Alignment.CENTER,
-                )
-        return loaded_views.get(index, ft.Container(expand=True))
+                import traceback; traceback.print_exc()
+                views_cache[idx] = ft.Container(content=ft.Text(f"Erro: {ex}", color=RED), padding=40, expand=True)
+        return views_cache.get(idx, ft.Container(expand=True))
 
-    def on_nav_change(e):
+    def nav_change(e):
         idx = e.control.selected_index
-        nav_rail.selected_index = idx
-        nav_bar.selected_index = idx
-        content_area.content = load_view(idx)
+        rail.selected_index = idx
+        bar.selected_index = idx
+        content.content = load_view(idx)
         page.update()
 
-    nav_logo = ft.Container(
-        content=ft.Column([
-            ft.Image(src="logo_icon.png", width=44, height=44),
-            ft.Container(height=4),
-            ft.Text("VELLI", size=9, weight=ft.FontWeight.W_800, color=TEXT_MUTED, font_family="Inter"),
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
-        padding=ft.Padding.only(top=20, bottom=20),
+    logo_widget = ft.Container(
+        content=ft.Image(src="logo_velli.png", width=120, height=40),
+        padding=ft.Padding.only(top=24, bottom=24, left=0, right=0),
+        alignment=ft.Alignment.CENTER,
     )
 
-    nav_rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.SELECTED,
-        min_width=80,
-        group_alignment=-0.85,
-        bgcolor=NAV_BG,
-        indicator_color=BORDER_HOVER,
-        leading=nav_logo,
-        destinations=[
-            ft.NavigationRailDestination(icon=ft.Icons.ROCKET_LAUNCH_OUTLINED, selected_icon=ft.Icons.ROCKET_LAUNCH, label="Prospectar"),
-            ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OUTLINED, selected_icon=ft.Icons.FOLDER, label="Campanhas"),
-            ft.NavigationRailDestination(icon=ft.Icons.SMART_TOY_OUTLINED, selected_icon=ft.Icons.SMART_TOY, label="VELLIX IA"),
-            ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
-        ],
-        on_change=on_nav_change,
-        selected_label_text_style=ft.TextStyle(size=10, weight=ft.FontWeight.W_600, color=ACCENT, font_family="Inter"),
-        unselected_label_text_style=ft.TextStyle(size=10, color=TEXT_MUTED, font_family="Inter"),
+    dests = [
+        ft.NavigationRailDestination(icon=ft.Icons.ROCKET_LAUNCH_OUTLINED, selected_icon=ft.Icons.ROCKET_LAUNCH, label="Prospectar"),
+        ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OUTLINED, selected_icon=ft.Icons.FOLDER, label="Campanhas"),
+        ft.NavigationRailDestination(icon=ft.Icons.SMART_TOY_OUTLINED, selected_icon=ft.Icons.SMART_TOY, label="VELLIX IA"),
+        ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
+    ]
+
+    rail = ft.NavigationRail(
+        selected_index=0, label_type=ft.NavigationRailLabelType.SELECTED,
+        min_width=88, group_alignment=-0.9, bgcolor=BG, indicator_color=BG_HOVER,
+        leading=logo_widget, destinations=dests, on_change=nav_change,
+        selected_label_text_style=ft.TextStyle(size=10, weight=ft.FontWeight.W_600, color=ACC),
+        unselected_label_text_style=ft.TextStyle(size=10, color=TX3),
     )
 
-    nav_bar = ft.NavigationBar(
-        selected_index=0,
-        bgcolor=NAV_BG,
-        indicator_color=BORDER_HOVER,
+    bar = ft.NavigationBar(
+        selected_index=0, bgcolor=BG, indicator_color=BG_HOVER,
         label_behavior=ft.NavigationBarLabelBehavior.ALWAYS_SHOW,
         destinations=[
             ft.NavigationBarDestination(icon=ft.Icons.ROCKET_LAUNCH_OUTLINED, selected_icon=ft.Icons.ROCKET_LAUNCH, label="Prospectar"),
@@ -113,33 +86,24 @@ def main(page: ft.Page):
             ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY_OUTLINED, selected_icon=ft.Icons.SMART_TOY, label="VELLIX IA"),
             ft.NavigationBarDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
         ],
-        on_change=on_nav_change,
+        on_change=nav_change,
     )
 
-    desktop_layout = ft.Row(
-        controls=[nav_rail, ft.VerticalDivider(width=1, color=BORDER_SUBTLE), content_area],
-        expand=True, spacing=0,
-    )
+    desktop = ft.Row(controls=[rail, ft.VerticalDivider(width=1, color=BORDER), content], expand=True, spacing=0)
 
-    def build_layout():
-        is_mobile = page.width is not None and page.width < 768
-        if is_mobile:
-            page.navigation_bar = nav_bar
-            page.controls = [ft.SafeArea(content=content_area, expand=True)]
+    def layout():
+        mobile = page.width is not None and page.width < 768
+        if mobile:
+            page.navigation_bar = bar
+            page.controls = [ft.SafeArea(content=content, expand=True)]
         else:
             page.navigation_bar = None
-            page.controls = [desktop_layout]
+            page.controls = [desktop]
 
-    def on_resize(e):
-        build_layout()
-        page.update()
-
-    page.on_resized = on_resize
-
-    content_area.content = load_view(0)
-    build_layout()
+    page.on_resized = lambda e: (layout(), page.update())
+    content.content = load_view(0)
+    layout()
     page.update()
-
 
 assets_dir = os.path.abspath("assets")
 app = flet_fastapi.app(main, assets_dir=assets_dir)
