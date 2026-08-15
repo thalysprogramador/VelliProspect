@@ -24,23 +24,23 @@ BLOCKED_DOMAINS = [
 ]
 
 SOURCES = {
-    "Instagram": {
+    "instagram": {
         "query_template": "site:instagram.com {niche} {region}",
         "skip_domain_filter": True,
     },
-    "Google Maps / Sites": {
+    "maps": {
         "query_template": "{niche} {region} contato telefone",
         "skip_domain_filter": False,
     },
-    "LinkedIn": {
+    "linkedin": {
         "query_template": "site:linkedin.com/company {niche} {region}",
         "skip_domain_filter": True,
     },
-    "Google Meu Negocio": {
-        "query_template": "{niche} {region} site:google.com/maps",
+    "maps_insta": {
+        "query_template": "{niche} {region} contato site:google.com/maps OR site:instagram.com",
         "skip_domain_filter": True,
     },
-    "Facebook": {
+    "facebook": {
         "query_template": "site:facebook.com {niche} {region}",
         "skip_domain_filter": True,
     },
@@ -153,7 +153,7 @@ def _ddgs_search_with_retry(query, max_results, max_retries=3):
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
     leads = []
-    source_config = SOURCES.get(source_key, SOURCES["Google Maps / Sites"])
+    source_config = SOURCES.get(source_key, SOURCES["maps"])
     query = source_config["query_template"].format(niche=niche, region=region)
     skip_domain = source_config["skip_domain_filter"]
 
