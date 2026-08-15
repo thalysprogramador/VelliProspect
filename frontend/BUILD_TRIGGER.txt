@@ -1,1 +1,1 @@
-2026-08-15 20:03:30 - Logo Cache Buster Trigger
+2026-08-15 20:17:30 - Final Fixes: Instagram Source + Logo Force Refresh
