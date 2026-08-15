@@ -32,11 +32,11 @@ def _metric(icon, label, value_ctrl, color):
 def _lead_card(lead, page):
     sc = int(lead.get("score", 0))
     scol = GREEN if sc >= 8 else (YEL if sc >= 5 else RED)
-    tags = ft.Row([_tag(t) for t in lead.get("tags", [])], wrap=True, spacing=6)
+    tags = ft.Row([_tag(t) for t in lead.get("tags", [])], wrap=True, spacing=6),
     
     link = lead.get("link", "")
     btn_visit = ft.ElevatedButton(
-        content=ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW,  size=16), ft.Text("Acessar Fonte",  size=13, weight=ft.FontWeight.W_600)], spacing=6)
+        content=ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW,  size=16), ft.Text("Acessar Fonte",  size=13, weight=ft.FontWeight.W_600)], spacing=6),
         bgcolor=ACC,
         
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), elevation=0, padding=12),
