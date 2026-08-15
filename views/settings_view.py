@@ -39,7 +39,7 @@ def build_settings_view(page: ft.Page):
             try:
                 from google import genai
                 client = genai.Client(api_key=key)
-                r = client.models.generate_content(model="gemini-2.5-flash", contents="Responda OK")
+                r = client.models.generate_content(model="gemini-flash-latest", contents="Responda OK")
                 if r and r.text:
                     status.value = "Conexao estavel! API respondendo perfeitamente."
                     status.color = GREEN
