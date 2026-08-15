@@ -109,9 +109,22 @@ export default function Campaigns() {
             <div key={c.id} onClick={() => loadLeads(c.id)} className="glass-panel p-8 rounded-3xl cursor-pointer hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-white/20 transition-all group relative">
               <div className="flex justify-between items-start mb-6">
                 <h3 className="text-xl font-bold group-hover:text-blue-400 transition-colors">{c.name}</h3>
-                <span className={`text-xs font-bold px-3 py-1 rounded-full ${c.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
-                  {c.status === "completed" ? "Concluída" : "Em Andamento"}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${c.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                    {c.status === "completed" ? "Concluída" : "Em Andamento"}
+                  </span>
+                  <button 
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if(!confirm("Deseja realmente excluir esta campanha?")) return;
+                      await fetch(`https://velli-prospect.onrender.com/api/campaigns/${c.id}`, { method: "DELETE" });
+                      setCampaigns(campaigns.filter(camp => camp.id !== c.id));
+                    }}
+                    className="p-2 text-gray-500 hover:bg-red-500/20 hover:text-red-400 rounded-full transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
               <p className="text-gray-400 text-sm mb-6">{c.niche} • {c.region} • {c.source}</p>
               <div className="flex items-center justify-between border-t border-white/10 pt-6">
