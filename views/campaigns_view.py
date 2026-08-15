@@ -99,7 +99,7 @@ def build_campaigns_view(page: ft.Page):
         for l in leads:
             sc = int(l.get("score", 0))
             scol = GREEN if sc >= 8 else (YEL if sc >= 5 else RED)
-            tags_row = ft.Row([_tag(t) for t in l.get("tags", [])], wrap=True, spacing=6)
+            tags_row = ft.Row([_tag(t) for t in l.get("tags", [])], wrap=True, spacing=6),
             lid = l.get("id")
             
             link = l.get("link", "")
