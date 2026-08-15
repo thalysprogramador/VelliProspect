@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 import threading
 import time
 import traceback
