@@ -3,16 +3,22 @@ import flet.fastapi as flet_fastapi
 import os
 import uvicorn
 
+# Pre-load views for INSTANT navigation
+from views.prospect_view import build_prospect_view
+from views.campaigns_view import build_campaigns_view
+from views.copilot_view import build_copilot_view
+from views.settings_view import build_settings_view
+
 # Apple-Inspired Design Tokens
 BG = "#000000"
 BG_SEC = "#0A0A0A"
-BG_CARD = "#1C1C1E"
-BG_HOVER = "#2C2C2E"
-BORDER = "#38383A"
-TX = "#F5F5F7"
-TX2 = "#86868B"
-TX3 = "#48484A"
-ACC = "#FFFFFF"
+BG_CARD = "#141415"
+BG_HOVER = "#242426"
+BORDER = "#2C2C2E"
+TX = "#FFFFFF"
+TX2 = "#A1A1A6"
+TX3 = "#6E6E73"
+ACC = "#2997FF"
 GREEN = "#30D158"
 YEL = "#FFD60A"
 RED = "#FF453A"
@@ -32,18 +38,10 @@ def main(page: ft.Page):
     def load_view(idx):
         if idx not in views_cache:
             try:
-                if idx == 0:
-                    from views.prospect_view import build_prospect_view
-                    views_cache[idx] = build_prospect_view(page)
-                elif idx == 1:
-                    from views.campaigns_view import build_campaigns_view
-                    views_cache[idx] = build_campaigns_view(page)
-                elif idx == 2:
-                    from views.copilot_view import build_copilot_view
-                    views_cache[idx] = build_copilot_view(page)
-                elif idx == 3:
-                    from views.settings_view import build_settings_view
-                    views_cache[idx] = build_settings_view(page)
+                if idx == 0: views_cache[idx] = build_prospect_view(page)
+                elif idx == 1: views_cache[idx] = build_campaigns_view(page)
+                elif idx == 2: views_cache[idx] = build_copilot_view(page)
+                elif idx == 3: views_cache[idx] = build_settings_view(page)
             except Exception as ex:
                 import traceback; traceback.print_exc()
                 views_cache[idx] = ft.Container(content=ft.Text(f"Erro: {ex}", color=RED), padding=40, expand=True)
@@ -57,33 +55,33 @@ def main(page: ft.Page):
         page.update()
 
     logo_widget = ft.Container(
-        content=ft.Image(src="logo_velli.png", width=120, height=40),
-        padding=ft.Padding.only(top=24, bottom=24, left=0, right=0),
+        content=ft.Image(src="logo_velli_white.png", width=140, height=45),
+        padding=ft.Padding.only(top=32, bottom=32, left=0, right=0),
         alignment=ft.Alignment.CENTER,
     )
 
     dests = [
         ft.NavigationRailDestination(icon=ft.Icons.ROCKET_LAUNCH_OUTLINED, selected_icon=ft.Icons.ROCKET_LAUNCH, label="Prospectar"),
         ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OUTLINED, selected_icon=ft.Icons.FOLDER, label="Campanhas"),
-        ft.NavigationRailDestination(icon=ft.Icons.SMART_TOY_OUTLINED, selected_icon=ft.Icons.SMART_TOY, label="VELLIX IA"),
+        ft.NavigationRailDestination(icon=ft.Icons.AUTO_AWESOME_OUTLINED, selected_icon=ft.Icons.AUTO_AWESOME, label="VELLIX IA"),
         ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
     ]
 
     rail = ft.NavigationRail(
         selected_index=0, label_type=ft.NavigationRailLabelType.SELECTED,
-        min_width=88, group_alignment=-0.9, bgcolor=BG, indicator_color=BG_HOVER,
+        min_width=96, group_alignment=-1.0, bgcolor=BG_SEC, indicator_color=BG_HOVER,
         leading=logo_widget, destinations=dests, on_change=nav_change,
-        selected_label_text_style=ft.TextStyle(size=10, weight=ft.FontWeight.W_600, color=ACC),
-        unselected_label_text_style=ft.TextStyle(size=10, color=TX3),
+        selected_label_text_style=ft.TextStyle(size=11, weight=ft.FontWeight.W_600, color=ACC),
+        unselected_label_text_style=ft.TextStyle(size=11, color=TX3),
     )
 
     bar = ft.NavigationBar(
-        selected_index=0, bgcolor=BG, indicator_color=BG_HOVER,
+        selected_index=0, bgcolor=BG_SEC, indicator_color=BG_HOVER,
         label_behavior=ft.NavigationBarLabelBehavior.ALWAYS_SHOW,
         destinations=[
             ft.NavigationBarDestination(icon=ft.Icons.ROCKET_LAUNCH_OUTLINED, selected_icon=ft.Icons.ROCKET_LAUNCH, label="Prospectar"),
             ft.NavigationBarDestination(icon=ft.Icons.FOLDER_OUTLINED, selected_icon=ft.Icons.FOLDER, label="Campanhas"),
-            ft.NavigationBarDestination(icon=ft.Icons.SMART_TOY_OUTLINED, selected_icon=ft.Icons.SMART_TOY, label="VELLIX IA"),
+            ft.NavigationBarDestination(icon=ft.Icons.AUTO_AWESOME_OUTLINED, selected_icon=ft.Icons.AUTO_AWESOME, label="VELLIX IA"),
             ft.NavigationBarDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
         ],
         on_change=nav_change,
@@ -101,6 +99,8 @@ def main(page: ft.Page):
             page.controls = [desktop]
 
     page.on_resized = lambda e: (layout(), page.update())
+    # Pre-render all views in background so navigation is instant
+    for i in range(4): load_view(i)
     content.content = load_view(0)
     layout()
     page.update()
