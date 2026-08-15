@@ -36,10 +36,9 @@ def _lead_card(lead, page):
     
     link = lead.get("link", "")
     btn_visit = ft.ElevatedButton(
-        text="Acessar Fonte",
-        icon=ft.Icons.OPEN_IN_NEW,
+        content=ft.Row([ft.Icon(ft.Icons.OPEN_IN_NEW,  size=16), ft.Text("Acessar Fonte",  size=13, weight=ft.FontWeight.W_600)], spacing=6)
         bgcolor=ACC,
-        color=TX,
+        
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), elevation=0, padding=12),
         on_click=lambda e: page.launch_url(link) if link else None,
         visible=bool(link)
@@ -212,12 +211,12 @@ def build_prospect_view(page: ft.Page):
 
     return ft.Container(content=ft.Column([
         ft.Container(content=ft.Row([
-            ft.Image(src="logo_velli_white.png", width=320, height=95),
+            ft.Image(src="logo_velli_white.png", width=450, height=130),
             ft.Container(width=1, height=40, bgcolor=BORDER, margin=ft.Margin.symmetric(horizontal=16)),
             ft.Text("Transformando negocios comuns em marcas extraordinarias.", size=12, color=TX3, italic=True, weight=ft.FontWeight.W_500, expand=True)
         ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER), padding=ft.Padding.only(bottom=24)),
         ft.Container(content=ft.Column([
-            ft.Text("Motor de Prospeccao", size=28, weight=ft.FontWeight.W_600, color=TX, font_family="Inter"),
+            ft.Text("Motor de Prospeccao", size=28, weight=ft.FontWeight.W_600,  font_family="Inter"),
             ft.Text("Inteligencia artificial aplicada a vendas B2B.", size=15, color=TX2),
             ft.Container(height=12),
             ft.Row([niche, region], spacing=16),
@@ -237,3 +236,4 @@ def build_prospect_view(page: ft.Page):
         ft.Container(height=12),
         leads_list,
     ], scroll=ft.ScrollMode.AUTO, expand=True), padding=ft.Padding.symmetric(horizontal=40, vertical=32), expand=True)
+
