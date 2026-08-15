@@ -212,7 +212,7 @@ def build_prospect_view(page: ft.Page):
 
     return ft.Container(content=ft.Column([
         ft.Container(content=ft.Row([
-            ft.Image(src="logo_velli_white.png", width=200, height=60),
+            ft.Image(src="logo_velli_white.png", width=320, height=95),
             ft.Container(width=1, height=40, bgcolor=BORDER, margin=ft.Margin.symmetric(horizontal=16)),
             ft.Text("Transformando negocios comuns em marcas extraordinarias.", size=12, color=TX3, italic=True, weight=ft.FontWeight.W_500, expand=True)
         ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER), padding=ft.Padding.only(bottom=24)),
