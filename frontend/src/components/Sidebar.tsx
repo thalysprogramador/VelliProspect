@@ -18,7 +18,7 @@ export default function Sidebar() {
   return (
     <aside className="w-24 min-h-screen flex flex-col items-center py-8 glass-panel sticky top-0 border-r border-white/5 z-50">
       <div className="mb-12">
-        <img src="/logo.png" alt="Velli Prospect" className="w-14 h-14 rounded-2xl shadow-lg object-contain bg-black" />
+        <img src="/logo_velli_white.png" alt="Velli Prospect" className="w-16 h-16 object-contain" />
       </div>
       <nav className="flex flex-col gap-6 flex-1">
         {links.map((link) => {
