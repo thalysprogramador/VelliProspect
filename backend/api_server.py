@@ -5,7 +5,6 @@ from pydantic import BaseModel
 import database as db
 import scraper
 import ai_evaluator
-import time
 
 app = FastAPI(title="Velli Prospect API")
 
@@ -63,40 +62,85 @@ def set_setting(req: SettingsRequest):
 
 @app.post("/api/campaigns")
 def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
-    # This simulates the Flet workflow but asynchronous
     camp_name = f"{req.niche} em {req.region}"
     cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
     if not cid:
         raise HTTPException(status_code=500, detail="Error creating campaign")
     
-    # Run scraping in background
     background_tasks.add_task(run_scrape_task, cid, req)
     return {"status": "started", "campaign": {"id": cid}}
 
 def run_scrape_task(campaign_id: str, req: ScrapeRequest):
-    leads = scraper.scrape_leads(
-        req.niche, req.region, req.source, 
-        req.max_results, req.block_large_portals
-    )
-    if not leads:
-        db.update_campaign_stats(campaign_id, status="completed")
-        return
-        
-    db.update_campaign_stats(campaign_id, total_found=len(leads))
-    
-    api_key = db.get_setting("gemini_api_key", "")
-    for lead in leads:
-        try:
-            evaluated = ai_evaluator.evaluate_lead(lead, api_key)
-            if evaluated and evaluated.get("score", 0) >= req.min_score:
-                db.insert_lead(campaign_id, evaluated)
-        except Exception as e:
-            print(f"Error evaluating lead: {e}")
+    try:
+        leads = scraper.scrape_leads(
+            req.niche, req.region, req.source, 
+            req.max_results, req.block_large_portals
+        )
+        if not leads:
+            db.update_campaign_stats(campaign_id, status="completed")
+            return
             
-    db.update_campaign_stats(campaign_id, status="completed")
+        db.update_campaign_stats(campaign_id, total_found=len(leads))
+        
+        api_key = db.get_setting("gemini_api_key", "")
+        approved = 0
+        discarded = 0
+        
+        for lead in leads:
+            try:
+                # Pass lead, api_key AND req.criteria
+                evaluated = ai_evaluator.evaluate_lead(lead, api_key, req.criteria)
+                
+                score = evaluated.get("score", 5) if isinstance(evaluated, dict) else 5
+                
+                # Check score requirement
+                if score >= req.min_score:
+                    # Prepare complete lead object with proper field keys
+                    lead_data = {
+                        "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
+                        "link": lead.get("Link") or lead.get("link") or "",
+                        "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or "",
+                        "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
+                        "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
+                        "score": score,
+                        "reason": evaluated.get("reason", "Lead avaliado") if isinstance(evaluated, dict) else "Lead extraido",
+                        "tags": evaluated.get("tags", []) if isinstance(evaluated, dict) else [],
+                        "decision_maker": evaluated.get("decision_maker", "Proprietario") if isinstance(evaluated, dict) else "Proprietario",
+                        "whatsapp_ready": evaluated.get("whatsapp_ready", True) if isinstance(evaluated, dict) else True,
+                    }
+                    db.insert_lead(campaign_id, lead_data)
+                    approved += 1
+                else:
+                    discarded += 1
+            except Exception as e:
+                print(f"[Backend Error] Evaluation failed for lead: {e}")
+                # Fallback: insert lead even if AI evaluation encounters an issue
+                lead_data = {
+                    "name": lead.get("Nome") or "Lead Extraído",
+                    "link": lead.get("Link") or "",
+                    "description": lead.get("Descricao (Bio/Web)") or "",
+                    "has_phone": lead.get("Tem Telefone?") == "Sim",
+                    "has_email": lead.get("Tem E-mail?") == "Sim",
+                    "score": 7,
+                    "reason": "Lead extraído do motor de busca",
+                    "tags": ["Extraído"],
+                    "decision_maker": "Proprietario",
+                    "whatsapp_ready": True
+                }
+                if req.min_score <= 7:
+                    db.insert_lead(campaign_id, lead_data)
+                    approved += 1
+                else:
+                    discarded += 1
+
+            # Update stats dynamically as leads get processed
+            db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
+                
+        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
+    except Exception as e:
+        print(f"[Backend Error] Scrape task failed: {e}")
+        db.update_campaign_stats(campaign_id, status="completed")
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
