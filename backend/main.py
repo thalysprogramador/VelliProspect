@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 import flet.fastapi as flet_fastapi
 import os
 import uvicorn
