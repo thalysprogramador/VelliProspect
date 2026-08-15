@@ -1,3 +1,4 @@
+﻿
 services:
   - type: web
     name: velli-prospect
@@ -6,11 +7,8 @@ services:
     region: ohio
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    startCommand: uvicorn backend.api_server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.11"
-      - key: FLET_FORCE_WEB_SERVER
-        value: "true"
-      - key: FLET_SERVER_IP
-        value: "0.0.0.0"
+
