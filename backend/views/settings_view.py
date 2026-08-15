@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 import threading
 from database import get_setting, set_setting
 
