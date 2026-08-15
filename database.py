@@ -14,7 +14,7 @@ SUPABASE_KEY = "sb_publishable_r4Q2eU0K5gL6u6YoeuXCEw_fbJZfFnz"
 LOCAL_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data.json")
 
 # Gemini API Key default (pre-salva)
-DEFAULT_GEMINI_KEY = ""
+DEFAULT_GEMINI_KEY = "AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"
 
 _supabase = None
 _use_local = False
