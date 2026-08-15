@@ -105,7 +105,7 @@ def build_campaigns_view(page: ft.Page):
             link = l.get("link", "")
             btn_visit = ft.IconButton(icon=ft.Icons.OPEN_IN_NEW, icon_color=ACC, tooltip="Acessar Fonte", on_click=lambda e, lnk=link: page.launch_url(lnk) if lnk else None, visible=bool(link))
             
-            dd = ft.Dropdown(options=[ft.dropdown.Option("approved","Aprovado"),ft.dropdown.Option("contacted","Contatado"),ft.dropdown.Option("responded","Respondeu"),ft.dropdown.Option("converted","Convertido"),ft.dropdown.Option("lost","Perdido")], value=l.get("status","approved"), width=140, height=40, text_size=13, on_change=lambda e, lid=lid: update_lead_status(lid, e.control.value), bgcolor=BG, border_color=BORDER, border_radius=8)
+            dd = ft.Dropdown(options=[ft.dropdown.Option("approved","Aprovado"),ft.dropdown.Option("contacted","Contatado"),ft.dropdown.Option("responded","Respondeu"),ft.dropdown.Option("converted","Convertido"),ft.dropdown.Option("lost","Perdido")], value=l.get("status","approved"), width=140, height=40, text_size=13, on_select=lambda e, lid=lid: update_lead_status(lid, e.control.value), bgcolor=BG, border_color=BORDER, border_radius=8)
             
             panel.controls.append(ft.Container(content=ft.Column([
                 ft.Row([
