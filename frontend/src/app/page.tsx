@@ -10,6 +10,7 @@ export default function Prospect() {
   const [prompt, setPrompt] = useState("");
   const [maxResults, setMaxResults] = useState(50);
   const [minScore, setMinScore] = useState(7);
+  const [source, setSource] = useState("maps");
   const [loading, setLoading] = useState(false);
 
   const handleStart = async () => {
@@ -19,7 +20,7 @@ export default function Prospect() {
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ niche, region, criteria: prompt, max_results: maxResults, min_score: minScore, source: "maps", block_large_portals: true })
+        body: JSON.stringify({ niche, region, criteria: prompt, max_results: maxResults, min_score: minScore, source: source, block_large_portals: true })
       });
       if(res.ok) {
         alert("Prospeccao iniciada! A IA esta buscando em segundo plano. Va para Campanhas para acompanhar.");
@@ -72,6 +73,20 @@ export default function Prospect() {
               onChange={e => setRegion(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600"
             />
+          </div>
+
+          <div className="flex flex-col gap-2 text-left">
+            <label className="text-sm font-semibold text-gray-300 ml-2">Onde procurar?</label>
+            <select 
+              value={source}
+              onChange={e => setSource(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white"
+            >
+              <option value="maps">Google Maps (Recomendado para Negócios Locais)</option>
+              <option value="instagram">Instagram</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="maps_insta">Google Maps + Instagram</option>
+            </select>
           </div>
 
           <div className="flex flex-col gap-2 text-left">
