@@ -1,4 +1,4 @@
-﻿
+
 import shutil
 import re
 
