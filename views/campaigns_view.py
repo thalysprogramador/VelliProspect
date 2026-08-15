@@ -6,231 +6,100 @@ from datetime import datetime
 from persistence import get_campaigns, delete_campaign
 from database import get_campaign, get_leads_by_campaign, update_lead_status
 
-BG_PRIMARY = "#0A0A0A"
-BG_CARD = "#141414"
-BG_ELEVATED = "#1A1A1A"
-BORDER_SUBTLE = "#1F1F1F"
-BORDER_HOVER = "#333333"
-TEXT_PRIMARY = "#FAFAFA"
-TEXT_SECONDARY = "#8A8A8A"
-TEXT_MUTED = "#555555"
-ACCENT = "#FFFFFF"
-SUCCESS = "#34D399"
-WARNING = "#FBBF24"
-ERROR = "#F87171"
+BG = "#000000"
+BG_CARD = "#1C1C1E"
+BG_HOVER = "#2C2C2E"
+BORDER = "#38383A"
+TX = "#F5F5F7"
+TX2 = "#86868B"
+TX3 = "#48484A"
+ACC = "#FFFFFF"
+GREEN = "#30D158"
+YEL = "#FFD60A"
+RED = "#FF453A"
 
-TAG_COLORS = {
-    "Ticket Alto": "#10B981", "Ticket Baixo": "#6366F1", "Sem Site": "#EF4444",
-    "Boa Presenca Digital": "#3B82F6", "Baixa Presenca Digital": "#F59E0B",
-    "Franquia / Rede": "#8B5CF6", "Novo no Mercado": "#EC4899",
-    "Decisor Acessivel": "#14B8A6", "Alta Concorrencia": "#F97316",
-    "Oportunidade Urgente": "#EAB308", "E-commerce": "#06B6D4",
-    "Servico Local": "#84CC16", "B2B": "#6366F1", "B2C": "#F43F5E",
-    "Alto Potencial Digital": "#10B981", "Tem Redes Sociais": "#3B82F6",
-}
+TAG_COLORS = {"Ticket Alto": "#30D158", "Sem Site": "#FF453A", "Boa Presenca Digital": "#0A84FF", "Baixa Presenca Digital": "#FFD60A", "Franquia / Rede": "#BF5AF2", "Novo no Mercado": "#FF375F", "Decisor Acessivel": "#64D2FF", "Alta Concorrencia": "#FF9F0A", "E-commerce": "#5E5CE6", "Servico Local": "#30D158", "B2B": "#0A84FF", "B2C": "#FF375F", "Alto Potencial Digital": "#30D158"}
 
-def _status_label(status):
-    m = {"running": "Em Andamento", "completed": "Concluida", "failed": "Falhou"}
-    return m.get(status, (status or "").capitalize())
+def _fmt_date(d):
+    if not d: return ""
+    try: return datetime.fromisoformat(str(d).replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    except: return str(d)[:10]
 
-def _status_color(status):
-    m = {"running": WARNING, "completed": SUCCESS, "failed": ERROR}
-    return m.get(status, TEXT_MUTED)
+def _status_color(s):
+    return {"running": YEL, "completed": GREEN, "failed": RED}.get(s, TX3)
 
-def _format_date(iso_str):
-    if not iso_str: return ""
-    try:
-        dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
-        return dt.strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        return str(iso_str)[:16]
+def _status_label(s):
+    return {"running": "Ativo", "completed": "Concluida", "failed": "Falhou"}.get(s, (s or "").capitalize())
 
-def _build_tag_chip(tag_text):
-    color = TAG_COLORS.get(tag_text, "#888888")
-    return ft.Container(
-        content=ft.Text(tag_text.upper(), size=9, weight=ft.FontWeight.W_700, color=color, font_family="Inter"),
-        bgcolor=f"{color}15",
-        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-        border_radius=4,
-    )
+def _tag(t):
+    c = TAG_COLORS.get(t, TX3)
+    return ft.Container(content=ft.Text(t, size=10, weight=ft.FontWeight.W_600, color=c), bgcolor=f"{c}18", padding=ft.Padding.symmetric(horizontal=8, vertical=3), border_radius=6)
 
 def build_campaigns_view(page: ft.Page):
-    campaigns_list = ft.ListView(expand=True, spacing=12, auto_scroll=False)
-    detail_panel = ft.Column(expand=True, visible=False, scroll=ft.ScrollMode.AUTO)
-    main_container = ft.Column([campaigns_list], expand=True)
+    panel = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=0)
 
-    empty_state = ft.Container(
-        content=ft.Column([
-            ft.Icon(ft.Icons.FOLDER_OPEN, size=56, color=BORDER_HOVER),
-            ft.Text("Nenhuma campanha encontrada", size=18, weight=ft.FontWeight.W_600, color=TEXT_SECONDARY, font_family="Inter"),
-            ft.Text("Suas buscas concluidas aparecerao aqui.", size=14, color=TEXT_MUTED, font_family="Inter"),
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, spacing=12),
-        expand=True,
-        alignment=ft.Alignment.CENTER,
-        visible=False,
-    )
-
-    def load_campaigns():
-        campaigns_list.controls.clear()
-        detail_panel.visible = False
-        main_container.controls = [campaigns_list, empty_state]
-        campaigns = get_campaigns(page)
-
-        if not campaigns:
-            campaigns_list.visible = False
-            empty_state.visible = True
+    def render_list():
+        panel.controls.clear()
+        panel.controls.append(ft.Container(content=ft.Column([ft.Text("Campanhas", size=34, weight=ft.FontWeight.W_700, color=TX), ft.Text("Historico de prospeccoes e leads.", size=15, color=TX2)], spacing=4), padding=ft.Padding.only(bottom=24)))
+        camps = get_campaigns(page)
+        if not camps:
+            panel.controls.append(ft.Container(content=ft.Column([ft.Icon(ft.Icons.FOLDER_OPEN, size=48, color=TX3), ft.Text("Nenhuma campanha ainda.", size=16, color=TX2), ft.Text("Faca uma prospeccao para comecar.", size=14, color=TX3)], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12), expand=True, alignment=ft.Alignment.CENTER))
             page.update()
             return
-
-        campaigns_list.visible = True
-        empty_state.visible = False
-
-        for c in campaigns:
-            c_id = c.get("id")
-            total_app = c.get("total_approved") or 0
-            status = c.get("status", "")
-            s_color = _status_color(status)
-
+        for c in camps:
+            sc = _status_color(c.get("status", ""))
             card = ft.Container(
                 content=ft.Column([
-                    ft.Row([
-                        ft.Text(c.get("name", "Campanha"), size=16, weight=ft.FontWeight.W_700, color=TEXT_PRIMARY, font_family="Inter", expand=True),
-                        ft.Container(
-                            content=ft.Text(_status_label(status), size=10, weight=ft.FontWeight.W_800, color=s_color, font_family="Inter"),
-                            bgcolor=f"{s_color}15",
-                            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                            border_radius=4,
-                        ),
-                    ]),
-                    ft.Text(f"{c.get('niche', '')} em {c.get('region', '')} ({c.get('source', '')})", size=12, color=TEXT_SECONDARY, font_family="Inter"),
-                    ft.Divider(color=BORDER_SUBTLE, height=1),
-                    ft.Row([
-                        ft.Row([
-                            ft.Icon(ft.Icons.CALENDAR_TODAY, size=14, color=TEXT_MUTED),
-                            ft.Text(_format_date(c.get("created_at")), size=12, color=TEXT_MUTED, font_family="Inter"),
-                        ], spacing=4),
-                        ft.Container(expand=True),
-                        ft.Row([
-                            ft.Icon(ft.Icons.PEOPLE, size=14, color=SUCCESS),
-                            ft.Text(f"{total_app} Leads", size=12, weight=ft.FontWeight.W_600, color=SUCCESS, font_family="Inter"),
-                        ], spacing=4),
-                    ]),
-                ], spacing=8),
-                bgcolor=BG_CARD,
-                border=ft.Border.all(1, BORDER_SUBTLE),
-                border_radius=12,
-                padding=20,
-                on_click=lambda e, cid=c_id: show_detail(cid),
-                on_hover=lambda e: (setattr(e.control, "border", ft.Border.all(1, ACCENT if e.data == "true" else BORDER_SUBTLE)), e.control.update()),
+                    ft.Row([ft.Text(c.get("name", "Campanha"), size=17, weight=ft.FontWeight.W_700, color=TX, expand=True), ft.Container(content=ft.Text(_status_label(c.get("status")), size=10, weight=ft.FontWeight.W_700, color=sc), bgcolor=f"{sc}18", padding=ft.Padding.symmetric(horizontal=10, vertical=4), border_radius=6)]),
+                    ft.Text(f"{c.get('niche','')} | {c.get('region','')} | {c.get('source','')}", size=13, color=TX2),
+                    ft.Divider(color=BORDER, height=1),
+                    ft.Row([ft.Text(_fmt_date(c.get("created_at")), size=12, color=TX3), ft.Container(expand=True), ft.Text(f"{c.get('total_approved', 0)} leads", size=13, weight=ft.FontWeight.W_600, color=GREEN)]),
+                ], spacing=10),
+                bgcolor=BG_CARD, border=ft.Border.all(1, BORDER), border_radius=16, padding=20,
+                on_click=lambda e, cid=c.get("id"): detail(cid),
+                on_hover=lambda e: (setattr(e.control, "bgcolor", BG_HOVER if e.data == "true" else BG_CARD), e.control.update()),
             )
-            campaigns_list.controls.append(card)
-
+            panel.controls.append(ft.Container(content=card, padding=ft.Padding.only(bottom=12)))
         page.update()
 
-    def show_detail(c_id):
-        c = get_campaign(c_id)
+    def detail(cid):
+        c = get_campaign(cid)
         if not c: return
-
-        leads = get_leads_by_campaign(c_id)
-        detail_panel.controls.clear()
-
-        def on_back(e):
-            detail_panel.visible = False
-            main_container.controls = [campaigns_list, empty_state]
-            page.update()
-
-        def on_delete(e):
-            delete_campaign(c_id)
-            detail_panel.visible = False
-            load_campaigns()
-
-        def on_export(e):
-            if not leads: return
-            try:
-                df = pd.DataFrame(leads)
-                cols_drop = ["campaign_id", "id", "created_at"]
-                for col in cols_drop:
-                    if col in df.columns:
-                        df = df.drop(columns=[col])
-                buffer = io.BytesIO()
-                df.to_excel(buffer, index=False)
-                buffer.seek(0)
-                b64 = base64.b64encode(buffer.read()).decode()
-                page.launch_url(f"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}")
-            except Exception as ex:
-                print(f"[Export Error] {ex}")
-
-        def on_status_change(e, lead_id):
-            update_lead_status(lead_id, e.control.value)
-
-        leads_ui = []
+        leads = get_leads_by_campaign(cid)
+        panel.controls.clear()
+        panel.controls.append(ft.Row([
+            ft.IconButton(ft.Icons.ARROW_BACK, icon_color=TX2, on_click=lambda e: render_list()),
+            ft.Text(c.get("name",""), size=24, weight=ft.FontWeight.W_700, color=TX, expand=True),
+            ft.IconButton(ft.Icons.DOWNLOAD, icon_color=TX2, on_click=lambda e: export(leads), tooltip="Exportar"),
+            ft.IconButton(ft.Icons.DELETE, icon_color=RED, on_click=lambda e: (delete_campaign(cid), render_list()), tooltip="Apagar"),
+        ]))
+        panel.controls.append(ft.Text(f"{len(leads)} leads aprovados", size=14, color=GREEN))
+        panel.controls.append(ft.Divider(color=BORDER))
         for l in leads:
-            score = l.get("score", 0)
-            score_color = SUCCESS if score >= 8 else (WARNING if score >= 5 else ERROR)
-            tags_ui = [_build_tag_chip(t) for t in l.get("tags", [])]
+            sc = int(l.get("score", 0))
+            scol = GREEN if sc >= 8 else (YEL if sc >= 5 else RED)
+            tags_row = ft.Row([_tag(t) for t in l.get("tags", [])], wrap=True, spacing=4)
             lid = l.get("id")
-
-            status_dd = ft.Dropdown(
-                options=[
-                    ft.dropdown.Option("approved", "Aprovado"),
-                    ft.dropdown.Option("contacted", "Contatado"),
-                    ft.dropdown.Option("responded", "Respondeu"),
-                    ft.dropdown.Option("converted", "Convertido"),
-                    ft.dropdown.Option("lost", "Perdido"),
-                ],
-                value=l.get("status", "approved"),
-                width=130,
-                height=36,
-                text_size=11,
-                on_change=lambda e, lid=lid: on_status_change(e, lid),
-                bgcolor=BG_PRIMARY,
-                border_color=BORDER_SUBTLE,
-            )
-
-            leads_ui.append(
-                ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Container(
-                                content=ft.Text(str(score), size=14, weight=ft.FontWeight.W_800, color=BG_PRIMARY, font_family="Inter"),
-                                bgcolor=score_color,
-                                width=32, height=32, border_radius=16, alignment=ft.Alignment.CENTER,
-                            ),
-                            ft.Column([
-                                ft.Text(l.get("name", "N/A"), size=15, weight=ft.FontWeight.W_700, color=TEXT_PRIMARY, font_family="Inter"),
-                                ft.Text(l.get("link", ""), size=11, color=TEXT_MUTED, font_family="Inter", selectable=True),
-                            ], spacing=2, expand=True),
-                            status_dd,
-                        ]),
-                        ft.Row(tags_ui, wrap=True, spacing=4),
-                        ft.Text(l.get("reason", ""), size=13, color=TEXT_SECONDARY, font_family="Inter", italic=True),
-                    ], spacing=10),
-                    bgcolor=BG_PRIMARY,
-                    border=ft.Border.all(1, BORDER_SUBTLE),
-                    border_radius=8,
-                    padding=16,
-                )
-            )
-
-        detail_panel.controls = [
-            ft.Row([
-                ft.IconButton(ft.Icons.ARROW_BACK, icon_color=TEXT_SECONDARY, on_click=on_back),
-                ft.Text(c.get("name"), size=22, weight=ft.FontWeight.W_700, color=TEXT_PRIMARY, font_family="Inter", expand=True),
-                ft.IconButton(ft.Icons.DOWNLOAD, icon_color=TEXT_SECONDARY, on_click=on_export, tooltip="Exportar Excel"),
-                ft.IconButton(ft.Icons.DELETE, icon_color=ERROR, on_click=on_delete, tooltip="Apagar Campanha"),
-            ]),
-            ft.Text(f"Total Aprovados: {len(leads)}", size=14, color=SUCCESS, font_family="Inter"),
-            ft.Divider(color=BORDER_SUBTLE),
-            ft.Column(leads_ui, spacing=12),
-        ]
-        detail_panel.visible = True
-        main_container.controls = [detail_panel]
+            dd = ft.Dropdown(options=[ft.dropdown.Option("approved","Aprovado"),ft.dropdown.Option("contacted","Contatado"),ft.dropdown.Option("responded","Respondeu"),ft.dropdown.Option("converted","Convertido"),ft.dropdown.Option("lost","Perdido")], value=l.get("status","approved"), width=130, height=36, text_size=11, on_change=lambda e, lid=lid: update_lead_status(lid, e.control.value), bgcolor=BG, border_color=BORDER)
+            panel.controls.append(ft.Container(content=ft.Column([
+                ft.Row([ft.Container(content=ft.Text(str(sc), size=14, weight=ft.FontWeight.W_800, color=BG), bgcolor=scol, width=34, height=34, border_radius=17, alignment=ft.Alignment.CENTER), ft.Column([ft.Text(l.get("name","N/A"), size=15, weight=ft.FontWeight.W_700, color=TX), ft.Text(l.get("link",""), size=11, color=TX3, selectable=True)], spacing=2, expand=True), dd]),
+                tags_row,
+                ft.Text(l.get("reason",""), size=13, color=TX2, italic=True),
+            ], spacing=10), bgcolor=BG_CARD, border=ft.Border.all(1, BORDER), border_radius=12, padding=16, margin=ft.Margin.only(bottom=10)))
         page.update()
 
-    load_campaigns()
+    def export(leads):
+        if not leads: return
+        try:
+            df = pd.DataFrame(leads)
+            for col in ["campaign_id", "id", "created_at"]:
+                if col in df.columns: df = df.drop(columns=[col])
+            buf = io.BytesIO()
+            df.to_excel(buf, index=False)
+            buf.seek(0)
+            page.launch_url(f"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64.b64encode(buf.read()).decode()}")
+        except Exception as ex:
+            print(f"[Export] {ex}")
 
-    return ft.Container(
-        content=ft.Stack([main_container]),
-        padding=ft.Padding.symmetric(horizontal=24, vertical=20),
-        expand=True,
-    )
+    render_list()
+    return ft.Container(content=panel, padding=ft.Padding.symmetric(horizontal=32, vertical=28), expand=True)
