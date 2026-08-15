@@ -7,6 +7,9 @@ import { Search, Loader2 } from "lucide-react";
 export default function Prospect() {
   const [niche, setNiche] = useState("");
   const [region, setRegion] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [maxResults, setMaxResults] = useState(50);
+  const [minScore, setMinScore] = useState(7);
   const [loading, setLoading] = useState(false);
 
   const handleStart = async () => {
@@ -16,11 +19,11 @@ export default function Prospect() {
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ niche, region, source: "maps", max_results: 50, block_large_portals: true })
+        body: JSON.stringify({ niche, region, criteria: prompt, max_results: maxResults, min_score: minScore, source: "maps", block_large_portals: true })
       });
       if(res.ok) {
         alert("Prospeccao iniciada! A IA esta buscando em segundo plano. Va para Campanhas para acompanhar.");
-        setNiche(""); setRegion("");
+        setNiche(""); setRegion(""); setPrompt("");
       } else {
         alert("Erro ao iniciar.");
       }
@@ -38,6 +41,7 @@ export default function Prospect() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
       
       <div className="w-full max-w-4xl flex flex-col items-center text-center z-10 space-y-6">
+        <img src="/logo_full.png" alt="Velli Marketing" className="h-20 mb-2 object-contain" />
         <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
           Velli Prospect
         </h1>
@@ -68,6 +72,38 @@ export default function Prospect() {
               onChange={e => setRegion(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600"
             />
+          </div>
+
+          <div className="flex flex-col gap-2 text-left">
+            <label className="text-sm font-semibold text-gray-300 ml-2">Prompt Customizado (Opcional)</label>
+            <textarea 
+              placeholder="Ex: Buscar empresas com site ruim, sem foto de capa no maps..."
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600 min-h-[100px] resize-y"
+            />
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-col gap-2 text-left w-1/2">
+              <label className="text-sm font-semibold text-gray-300 ml-2">Máximo de Resultados</label>
+              <input 
+                type="number" 
+                value={maxResults}
+                onChange={e => setMaxResults(Number(e.target.value))}
+                className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white"
+              />
+            </div>
+            <div className="flex flex-col gap-2 text-left w-1/2">
+              <label className="text-sm font-semibold text-gray-300 ml-2">Nota de Corte (0 a 10)</label>
+              <input 
+                type="number" 
+                value={minScore}
+                onChange={e => setMinScore(Number(e.target.value))}
+                className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white"
+                min={0} max={10}
+              />
+            </div>
           </div>
 
           <button 
