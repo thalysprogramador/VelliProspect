@@ -1,4 +1,4 @@
-﻿"""
+"""
 Velli Prospect V3 — Scraper Engine (Revisado v3)
 Motor de busca robusto com fallback para servidores cloud.
 Usa DuckDuckGo Search (DDGS) com proxy automatico, retry e tratamento de erro visivel.
