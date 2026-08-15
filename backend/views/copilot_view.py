@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 import threading
 from ai_evaluator import copilot_chat, generate_followup_plan
 from database import get_all_leads, get_setting
