@@ -100,7 +100,7 @@ def build_settings_view(page: ft.Page):
         ft.Container(height=48),
         
         ft.Container(content=ft.Column([
-            ft.Image(src="logo_velli_white.png", width=160, height=48),
+            ft.Image(src="logo_velli_white.png", width=320, height=95),
             ft.Text("Software proprietario Velli Marketing. Powered by Google Gemini AI.", size=12, color=TX3),
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12), alignment=ft.Alignment.CENTER),
         
