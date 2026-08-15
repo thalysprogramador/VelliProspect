@@ -79,7 +79,7 @@ def build_campaigns_view(page: ft.Page):
         panel.controls.clear()
         
         btn_export = ft.ElevatedButton(
-            content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD_ROUNDED,  size=16), ft.Text("Exportar Planilha (XLSX)",  size=13, weight=ft.FontWeight.W_600)], spacing=6),
+            content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16, color=TX), ft.Text("Exportar Planilha (XLSX)", size=13, weight=ft.FontWeight.W_600, color=TX)], spacing=6),
             bgcolor=ACC, 
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), elevation=0),
             on_click=lambda e: export(leads, c.get("name"))
@@ -99,7 +99,7 @@ def build_campaigns_view(page: ft.Page):
         for l in leads:
             sc = int(l.get("score", 0))
             scol = GREEN if sc >= 8 else (YEL if sc >= 5 else RED)
-            tags_row = ft.Row([_tag(t) for t in l.get("tags", [])], wrap=True, spacing=6),
+            tags_row = ft.Row([_tag(t) for t in l.get("tags", [])], wrap=True, spacing=6)
             lid = l.get("id")
             
             link = l.get("link", "")
