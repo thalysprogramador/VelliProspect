@@ -41,7 +41,7 @@ def build_campaigns_view(page: ft.Page):
     def render_list():
         panel.controls.clear()
         panel.controls.append(ft.Container(content=ft.Column([
-            ft.Text("Historico de Campanhas", size=28, weight=ft.FontWeight.W_600, color=TX, font_family="Inter"),
+            ft.Text("Historico de Campanhas", size=28, weight=ft.FontWeight.W_600,  font_family="Inter"),
             ft.Text("Gerencie e exporte seus leads estruturados.", size=15, color=TX2)
         ], spacing=4), padding=ft.Padding.only(bottom=32)))
         
@@ -55,7 +55,7 @@ def build_campaigns_view(page: ft.Page):
             sc = _status_color(c.get("status", ""))
             card = ft.Container(
                 content=ft.Column([
-                    ft.Row([ft.Text(c.get("name", "Campanha"), size=18, weight=ft.FontWeight.W_600, color=TX, expand=True), ft.Container(content=ft.Text(_status_label(c.get("status")), size=11, weight=ft.FontWeight.W_700, color=sc), bgcolor=f"{sc}15", padding=ft.Padding.symmetric(horizontal=12, vertical=6), border_radius=8)]),
+                    ft.Row([ft.Text(c.get("name", "Campanha"), size=18, weight=ft.FontWeight.W_600,  expand=True), ft.Container(content=ft.Text(_status_label(c.get("status")), size=11, weight=ft.FontWeight.W_700, color=sc), bgcolor=f"{sc}15", padding=ft.Padding.symmetric(horizontal=12, vertical=6), border_radius=8)]),
                     ft.Text(f"{c.get('niche','')}  ·  {c.get('region','')}  ·  {c.get('source','')}", size=14, color=TX2, weight=ft.FontWeight.W_500),
                     ft.Divider(color=BORDER, height=20),
                     ft.Row([
@@ -79,16 +79,15 @@ def build_campaigns_view(page: ft.Page):
         panel.controls.clear()
         
         btn_export = ft.ElevatedButton(
-            text="Exportar Planilha (XLSX)",
-            icon=ft.Icons.DOWNLOAD_ROUNDED,
-            bgcolor=ACC, color=TX,
+            content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD_ROUNDED,  size=16), ft.Text("Exportar Planilha (XLSX)",  size=13, weight=ft.FontWeight.W_600)], spacing=6),
+            bgcolor=ACC, 
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), elevation=0),
             on_click=lambda e: export(leads, c.get("name"))
         )
         
         panel.controls.append(ft.Row([
             ft.IconButton(ft.Icons.ARROW_BACK_IOS_NEW, icon_color=TX, on_click=lambda e: render_list(), style=ft.ButtonStyle(bgcolor=BG_CARD)),
-            ft.Text(c.get("name",""), size=24, weight=ft.FontWeight.W_600, color=TX, expand=True),
+            ft.Text(c.get("name",""), size=24, weight=ft.FontWeight.W_600,  expand=True),
             btn_export,
             ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=RED, tooltip="Apagar Campanha", on_click=lambda e: (delete_campaign(cid), render_list()), style=ft.ButtonStyle(bgcolor=BG_CARD)),
         ], spacing=16))
@@ -154,3 +153,4 @@ def build_campaigns_view(page: ft.Page):
 
     render_list()
     return ft.Container(content=panel, padding=ft.Padding.symmetric(horizontal=40, vertical=32), expand=True)
+
