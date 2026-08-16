@@ -76,12 +76,15 @@ def _normalize_id(val):
 
 # === Campaigns ===
 def create_campaign(name="", niche="", region="", source="", criteria="", min_score=7, max_results=100):
-    import time
+    import time, json
     # Fits 32-bit integer (max 2147483647) for Postgres int4 compatibility
     cid = int(time.time() * 10) % 2000000000
+    
+    source_val = json.dumps(source) if isinstance(source, (list, dict)) else str(source)
+    
     data = {
         "id": cid,
-        "name": name, "niche": niche, "region": region, "source": source,
+        "name": name, "niche": niche, "region": region, "source": source_val,
         "criteria": criteria, "min_score": min_score, "max_results": max_results,
         "status": "running", "created_at": datetime.now().isoformat(),
         "total_approved": 0, "total_found": 0, "total_discarded": 0,
