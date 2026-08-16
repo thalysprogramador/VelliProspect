@@ -99,20 +99,22 @@ def copilot_chat_endpoint(req: CopilotRequest):
 
 @app.post("/api/campaigns")
 def create_campaign(req: ScrapeRequest):
-    camp_name = f"{req.niche} em {req.region}"
-    cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
-    if not cid:
-        raise HTTPException(status_code=500, detail="Error creating campaign")
-    
-    # Ultra-fast synchronous execution (0.8s) guarantees 100% completion without thread freezes
     try:
+        camp_name = f"{req.niche} em {req.region}"
+        cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
+        if not cid:
+            raise HTTPException(status_code=500, detail="Error creating campaign DB returned None")
+        
+        # Ultra-fast synchronous execution (0.8s) guarantees 100% completion without thread freezes
         run_scrape_task(cid, req)
+        
+        comp_data = db.get_campaign(cid) or {"id": cid, "status": "completed"}
+        return {"status": "completed", "campaign": comp_data}
     except Exception as e:
-        print(f"[Backend Error] Sync scrape failed: {e}")
-        db.update_campaign_stats(cid, status="error", status_message=f"Erro: {str(e)[:40]}")
-    
-    comp_data = db.get_campaign(cid) or {"id": cid, "status": "completed"}
-    return {"status": "completed", "campaign": comp_data}
+        import traceback
+        err_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        print(f"[API Error] create_campaign: {err_msg}")
+        raise HTTPException(status_code=500, detail=err_msg)
 
 def run_scrape_task(campaign_id: str, req: ScrapeRequest):
     active_campaigns[campaign_id] = True
