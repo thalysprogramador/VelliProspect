@@ -2,6 +2,7 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Union, List
 import database as db
 import scraper
 import ai_evaluator
@@ -22,7 +23,7 @@ app.add_middleware(
 class ScrapeRequest(BaseModel):
     niche: str
     region: str
-    source: list[str] | str
+    source: Union[List[str], str]
     criteria: str = ""
     min_score: int = 7
     max_results: int = 50
