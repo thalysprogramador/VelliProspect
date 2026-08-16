@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Loader2, Eye, EyeOff, CheckCircle2, AlertCircle } from "lucide-react";
+import { Save, Loader2, Eye, EyeOff, CheckCircle2, AlertCircle, Settings as SettingsIcon, Key } from "lucide-react";
 
 export default function Settings() {
   const [apiKey, setApiKey] = useState("");
@@ -54,13 +53,24 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-10 lg:p-16 max-w-4xl mx-auto">
-      <h1 className="text-4xl font-bold mb-4">Configurações</h1>
-      <p className="text-gray-400 mb-12">Configure suas chaves de API e preferências do sistema.</p>
+    <div className="p-4 md:p-10 lg:p-16 max-w-4xl mx-auto animate-in fade-in zoom-in-95 duration-500">
+      <div className="flex items-center gap-4 mb-8 md:mb-12">
+        <SettingsIcon size={32} className="text-blue-500" />
+        <h1 className="text-3xl md:text-4xl font-bold">Configurações</h1>
+      </div>
 
-      <div className="glass-panel p-8 rounded-3xl grid gap-8">
-        <div>
-          <label className="block text-sm font-semibold text-gray-300 mb-2">Chave da API Gemini (Google AI Studio)</label>
+      <div className="glass-panel p-6 md:p-10 rounded-3xl space-y-6 md:space-y-8">
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg md:text-xl font-bold flex items-center gap-2">
+                <Key size={20} className="text-yellow-500" /> API Key do Gemini
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Necessário para o uso do Copilot e avaliação das empresas por IA.
+              </p>
+            </div>
+          </div>
           <div className="relative">
             <input 
               type={showKey ? "text" : "password"} 
