@@ -108,47 +108,30 @@ def _clean_name(title):
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
 
-def _ddgs_search_with_retry(query, max_results, max_retries=3):
+def _ddgs_search_with_retry(query, max_results, max_retries=2):
     last_error = None
-    proxy_options = [None, "socks5://0.0.0.0:0"]
 
     for attempt in range(max_retries):
-        for proxy in proxy_options:
-            try:
-                if proxy and proxy != "socks5://0.0.0.0:0":
-                    ddgs = DDGS(proxy=proxy)
-                else:
-                    ddgs = DDGS()
+        try:
+            ddgs = DDGS()
+            results = list(ddgs.text(query, max_results=max_results))
+            if results:
+                print(f"[Scraper] Busca OK: {len(results)} resultados (tentativa {attempt+1})")
+                return results
+            else:
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                continue
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+            print(f"[Scraper] Erro tentativa {attempt+1}: {type(e).__name__}: {str(e)[:100]}")
+            if "ratelimit" in error_str or "429" in error_str:
+                time.sleep(2)
+            else:
+                time.sleep(1)
 
-                results = list(ddgs.text(query, max_results=max_results))
-
-                if results:
-                    print(f"[Scraper] Busca OK: {len(results)} resultados (tentativa {attempt+1})")
-                    return results
-                else:
-                    print(f"[Scraper] Busca vazia para: {query[:60]}... (tentativa {attempt+1})")
-                    if attempt < max_retries - 1:
-                        time.sleep(5)
-                    continue
-
-            except Exception as e:
-                last_error = e
-                error_str = str(e).lower()
-                print(f"[Scraper] Erro tentativa {attempt+1}: {type(e).__name__}: {str(e)[:100]}")
-
-                if "ratelimit" in error_str or "429" in error_str or "too many" in error_str:
-                    wait = 5 * (attempt + 1)
-                    print(f"[Scraper] Rate limit detectado, aguardando {wait}s...")
-                    time.sleep(wait)
-                    break 
-
-                if "connect" in error_str or "name" in error_str or "dns" in error_str:
-                    continue
-
-                time.sleep(5)
-                break
-
-    print(f"[Scraper] FALHA TOTAL apos {max_retries} tentativas. Ultimo erro: {last_error}")
+    print(f"[Scraper] FALHA apos {max_retries} tentativas. Ultimo erro: {last_error}")
     return []
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
@@ -206,17 +189,18 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
-    # Fetch a larger pool of leads (e.g., 3x max_results) to ensure we can hit the exact target after AI filtering
-    target_pool = min(max_results * 5, 500)
+    # Target pool size optimized to avoid long idle times (e.g. 2x requested amount, max 80)
+    target_pool = max(min(max_results * 2, 80), 20)
     
     print(f"\n{'='*60}")
-    print(f"[Scraper] INICIO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
+    print(f"[Scraper] INICIO ULTRARRAPIDO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
     print(f"{'='*60}")
 
     all_leads = []
     
-    # If sources is a string, convert to list
     if isinstance(sources, str):
         if sources == ALL_SOURCES_KEY:
             source_keys = list(SOURCES.keys())
@@ -228,25 +212,22 @@ def scrape_leads(niche, region, sources, max_results=100, block_large_portals=Tr
     if not source_keys:
         return []
 
-    per_source = max(target_pool // len(source_keys), 20)
+    per_source = max(target_pool // len(source_keys), 15)
 
-    for src_key in source_keys:
-        if len(all_leads) >= target_pool:
-            break
-
-        remaining = target_pool - len(all_leads)
-        batch_size = min(per_source, remaining)
-
-        try:
-            batch = _scrape_single_source(
-                niche, region, src_key, batch_size,
-                block_large_portals, on_progress
-            )
-            all_leads.extend(batch)
-            print(f"[Scraper] Total acumulado: {len(all_leads)} leads")
-        except Exception as e:
-            print(f"[Scraper] Fonte '{src_key}' falhou, continuando: {e}")
-            continue
+    # Parallel scraping across sources
+    with ThreadPoolExecutor(max_workers=min(len(source_keys), 4)) as executor:
+        future_to_source = {
+            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress): src_key
+            for src_key in source_keys
+        }
+        for future in as_completed(future_to_source):
+            src_key = future_to_source[future]
+            try:
+                batch = future.result()
+                all_leads.extend(batch)
+                print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
+            except Exception as e:
+                print(f"[Scraper] Fonte '{src_key}' falhou: {e}")
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
