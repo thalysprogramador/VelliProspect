@@ -115,17 +115,24 @@ def _clean_name(title):
 
 def _ddgs_search_with_retry(query, max_results, max_retries=2):
     last_error = None
-
     for attempt in range(max_retries):
         try:
             ddgs = DDGS()
-            # Strict limit to 30 results for fast response
+            # First try direct API backend for 1.5s JSON responses
+            results = list(ddgs.text(query, backend="api", max_results=min(max_results, 30)))
+            if results:
+                print(f"[Scraper] Busca API OK: {len(results)} resultados (tentativa {attempt+1})")
+                return results
+        except Exception as e:
+            print(f"[Scraper] DDGS API attempt {attempt+1} error: {e}")
+            
+        # Fallback to lite backend if api fails
+        try:
+            ddgs = DDGS()
             results = list(ddgs.text(query, backend="lite", max_results=min(max_results, 30)))
             if results:
-                print(f"[Scraper] Busca OK: {len(results)} resultados (tentativa {attempt+1})")
+                print(f"[Scraper] Busca Lite OK: {len(results)} resultados (tentativa {attempt+1})")
                 return results
-            else:
-                continue
         except Exception as e:
             last_error = e
             time.sleep(0.5)
