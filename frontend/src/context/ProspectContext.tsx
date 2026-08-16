@@ -83,13 +83,17 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
             setTotalDiscarded(discarded);
             setProgressPercent(percent);
             
-            setStatusMessage(`Analisando... Aprovados: ${approved}/${target} (${percent}%) | Avaliados: ${approved + discarded}/${found}`);
+            if (data.status_message) {
+              setStatusMessage(data.status_message);
+            } else {
+              setStatusMessage(`Analisando... Aprovados: ${approved}/${target} (${percent}%) | Avaliados: ${approved + discarded}/${found}`);
+            }
           }
         }
       } catch {
         // Connection error, keep trying
       }
-    }, 5000);
+    }, 2000);
 
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [campaignId, status]);
