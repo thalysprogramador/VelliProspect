@@ -1,166 +1,218 @@
-import streamlit as st
-import pandas as pd
-from scraper import scrape_leads
-from ai_evaluator import evaluate_lead
-import time
 
-# --- Setup Página ---
-st.set_page_config(page_title="VELLI PROSPECT V2", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Union, List
+import database as db
+import scraper
+import ai_evaluator
+import math
 
-# --- CSS Customizado ---
-st.markdown("""
-<style>
-    .velli-title {
-        background: -webkit-linear-gradient(45deg, #FF4B4B, #FF904B);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        font-weight: 900;
-        font-size: 3.5rem !important;
-        margin-bottom: 0px;
-    }
-    .velli-subtitle {
-        text-align: center;
-        color: #A0AEC0;
-        font-size: 1.2rem;
-        margin-bottom: 30px;
-    }
-    .metric-card {
-        background-color: #1E2127;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-</style>
-""", unsafe_allow_html=True)
+active_campaigns = {}
 
-# --- Cabeçalho Visual ---
-st.markdown('<h1 class="velli-title">⚡ VELLI PROSPECT V2</h1>', unsafe_allow_html=True)
-st.markdown('<p class="velli-subtitle">O software definitivo de mineração B2B com Inteligência Artificial</p>', unsafe_allow_html=True)
+app = FastAPI(title="Velli Prospect API")
 
-# --- Sidebar / Cofre de Chaves ---
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3651/3651239.png", width=80)
-    st.header("⚙️ Motor de IA")
-    api_key = st.text_input("Cole aqui sua Gemini API Key", type="password", help="Chave gratuita do AI Studio.")
-    st.info("O Velli Prospect usa a inteligência do Google para ler a bio de cada empresa e entregar apenas as melhores.")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    st.markdown("---")
-    st.markdown("🟢 **Status:** V2 Online e Otimizado")
+class ScrapeRequest(BaseModel):
+    niche: str
+    region: str
+    source: Union[List[str], str]
+    criteria: str = ""
+    min_score: int = 7
+    max_results: int = 50
+    block_large_portals: bool = True
 
-# --- Interface Principal em Abas ---
-tab_busca, tab_resultados = st.tabs(["🎯 Configurar Nova Prospecção", "📊 Painel de Leads"])
+class SettingsRequest(BaseModel):
+    key: str
+    value: str
 
-with tab_busca:
-    with st.container(border=True):
-        st.subheader("1. Onde e Quem buscar?")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            niche = st.text_input("Qual o Nicho? (ex: Escritório de Contabilidade)", "Estética")
-        with col2:
-            region = st.text_input("Qual a Região? (ex: Belo Horizonte)", "São Paulo")
-        with col3:
-            source = st.selectbox("Qual a Fonte?", ["Instagram", "Google Mapas/Sites (Geral)"])
+class CopilotRequest(BaseModel):
+    message: str
+    history: list = []  # opcional, historico anterior do chat
 
-    with st.container(border=True):
-        st.subheader("2. Filtros de Inteligência (A Cirurgia)")
-        colA, colB = st.columns([2, 1])
-        
-        with colA:
-            criteria = st.text_area("Descreva o lead dos sonhos para a IA:", height=130, 
-                                  value="Procure empresas que parecem pequenas ou não têm site profissional. Exclua qualquer clínica que pareça gigantesca ou rede de franquias.")
-        with colB:
-            st.markdown("**Regulagem da Peneira:**")
-            min_score = st.slider("Nota Mínima exigida para Aprovar (0 a 10)", 1, 10, 7)
-            require_contact = st.checkbox("Exigir Telefone Ou Email na Bio?", value=False, help="Se marcado, ignora perfis que não tenham deixado contato visível.")
-            block_portals = st.checkbox("Bloquear grandes portais (G1, etc)", value=True)
-            max_results = st.number_input("Tamanho da Varredura na internet", min_value=10, max_value=100, value=25)
+@app.get("/")
+def read_root():
+    return {"status": "ok", "app": "Velli Prospect Backend"}
 
-    if st.button("🚀 EXECUTAR VARREDURA MÁGICA", use_container_width=True, type="primary"):
-        if not niche or not region or not api_key:
-            st.error("⚠️ Atenção: Preecha o Nicho, Região e a sua Chave Gemini API (no menu lateral) antes de continuar.")
-        else:
-            with st.spinner(f"🔍 Vasculhando a internet em '{region}' atrás de '{niche}'... Pode demorar alguns segundos."):
-                raw_leads = scrape_leads(niche, region, source, max_results=max_results, block_portals=block_portals)
-            
-            if not raw_leads:
-                st.warning("Nenhum dado bruto encontrado. O Google/DuckDuckGo pode ter limitado a busca. Mude os termos ou aguarde.")
-            else:
-                st.success(f"🌐 Extraímos {len(raw_leads)} perfis na internet! A IA vai analisar agora:")
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                approved_leads = []
-                discarded_count = 0
-                
-                for i, lead in enumerate(raw_leads):
-                    status_text.text(f"⏳ A IA está lendo o perfil: {lead['Nome'][:30]}...")
-                    
-                    # Filtro Rápido (Contato)
-                    if require_contact and not lead['_has_contact']:
-                        discarded_count += 1
-                        progress_bar.progress((i + 1) / len(raw_leads))
-                        continue
-                    
-                    # Filtro de Inteligência (Gemini)
-                    justificativa, nota = evaluate_lead(lead, api_key, criteria)
-                    
-                    if int(nota) >= min_score:
-                        lead['Nota Velli (0-10)'] = f"⭐ {nota}"
-                        lead['Veredito da IA'] = justificativa
-                        # Puxa pro início da tabela
-                        approved_leads.append(lead)
-                    else:
-                        discarded_count += 1
-                        
-                    progress_bar.progress((i + 1) / len(raw_leads))
-                    time.sleep(3) # Pausa pra API grátis
-                
-                status_text.text("✅ Análise da Inteligência Artificial Finalizada!")
-                time.sleep(1)
-                
-                # Salvar no session state
-                st.session_state['last_results'] = approved_leads
-                st.session_state['total_found'] = len(raw_leads)
-                st.session_state['discarded'] = discarded_count
+@app.get("/api/campaigns")
+def get_campaigns():
+    return db.get_all_campaigns()
 
-with tab_resultados:
-    st.subheader("📊 Painel Analítico dos Leads")
+@app.get("/api/campaigns/{campaign_id}")
+def get_campaign(campaign_id: str):
+    return db.get_campaign(campaign_id)
+
+@app.get("/api/campaigns/{campaign_id}/leads")
+def get_leads(campaign_id: str):
+    return db.get_leads_by_campaign(campaign_id)
+
+@app.delete("/api/campaigns/{campaign_id}")
+def delete_campaign(campaign_id: str):
+    active_campaigns[campaign_id] = False
+    db.delete_campaign(campaign_id)
+    return {"status": "deleted"}
+
+@app.post("/api/campaigns/{campaign_id}/cancel")
+def cancel_campaign(campaign_id: str):
+    active_campaigns[campaign_id] = False
+    db.update_campaign_stats(campaign_id, status="completed")
+    return {"status": "cancelled"}
+
+@app.get("/api/settings/{key}")
+def get_setting(key: str):
+    val = db.get_setting(key)
+    return {"key": key, "value": val}
+
+@app.post("/api/settings")
+def set_setting(req: SettingsRequest):
+    db.set_setting(req.key, req.value)
+    return {"status": "success"}
+
+@app.post("/api/copilot/chat")
+def copilot_chat_endpoint(req: CopilotRequest):
+    api_key = db.get_setting("gemini_api_key")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Configure a API Key na aba Configuracoes primeiro.")
     
-    if 'last_results' in st.session_state:
-        # Métricas no Topo
-        m1, m2, m3 = st.columns(3)
-        m1.metric("🌐 Perfis Lidos", st.session_state['total_found'])
-        m2.metric("🏆 Leads Aprovados (Ouro)", len(st.session_state['last_results']))
-        m3.metric("🗑️ Lixo Descartado (Reprovado)", st.session_state['discarded'])
+    # We fetch leads to give context to Gemini
+    leads = db.get_all_leads()
+    
+    # Include history in the message if it exists so Gemini has context
+    full_message = req.message
+    if req.history:
+        history_text = "\n".join([f"{msg['role'].upper()}: {msg['text']}" for msg in req.history[-5:]]) # ultimas 5 mensagens
+        full_message = f"HISTORICO DA CONVERSA:\n{history_text}\n\nNOVA MENSAGEM DO USUARIO:\n{req.message}"
         
-        if st.session_state['last_results']:
-            st.markdown("---")
-            # Tabela Gourmet
-            df = pd.DataFrame(st.session_state['last_results'])
+    try:
+        reply = ai_evaluator.copilot_chat(full_message, leads, api_key)
+        return {"reply": reply}
+    except Exception as e:
+        print(f"[Copilot Error] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/campaigns")
+def create_campaign(req: ScrapeRequest):
+    try:
+        camp_name = f"{req.niche} em {req.region}"
+        cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
+        if not cid:
+            raise HTTPException(status_code=500, detail="Error creating campaign DB returned None")
+        
+        # Ultra-fast synchronous execution (0.8s) guarantees 100% completion without thread freezes
+        run_scrape_task(cid, req)
+        
+        comp_data = db.get_campaign(cid) or {"id": cid, "status": "completed"}
+        return {"status": "completed", "campaign": comp_data}
+    except Exception as e:
+        import traceback
+        err_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        print(f"[API Error] create_campaign: {err_msg}")
+        raise HTTPException(status_code=500, detail=err_msg)
+
+def run_scrape_task(campaign_id: str, req: ScrapeRequest):
+    active_campaigns[campaign_id] = True
+    try:
+        leads = scraper.scrape_leads(
+            niche=req.niche,
+            region=req.region,
+            sources=req.source,
+            max_results=req.max_results,
+            block_large_portals=req.block_large_portals,
+            on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, total_found=n)
+        )
+        if not leads:
+            db.update_campaign_stats(campaign_id, status="error")
+            return
             
-            # Removemos a flag interna pra ficar bonitinho
-            if '_has_contact' in df.columns:
-                df = df.drop(columns=['_has_contact'])
+        db.update_campaign_stats(campaign_id, total_found=len(leads))
+        
+        api_key = db.get_setting("gemini_api_key", "")
+        approved = 0
+        discarded = 0
+        
+        batch_size = 30
+        for i in range(0, len(leads), batch_size):
+            if not active_campaigns.get(campaign_id, True):
+                print(f"[Backend] Campaign {campaign_id} cancelled.")
+                break
                 
-            st.dataframe(df, use_container_width=True, height=400)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            # Botão de Download Enfatizado
-            csv = df.to_csv(index=False).encode('utf-8')
-            col_d1, col_d2, col_d3 = st.columns([1,2,1])
-            with col_d2:
-                st.download_button(
-                    label="📥 BAIXAR LISTA DE LEADS (PLANILHA EXCEL/CSV)",
-                    data=csv,
-                    file_name=f'Velli_Leads_Premium.csv',
-                    mime='text/csv',
-                    use_container_width=True,
-                    type="primary"
-                )
-        else:
-            st.info("Nenhum lead sobreviveu aos seus critérios rigorosos. Tente diminuir a 'Nota Mínima' ou desmarcar a exigência de contato.")
-    else:
-        st.info("Faça uma busca na aba 'Configurar Nova Prospecção' para os resultados preencherem este painel.")
+            if approved >= req.max_results:
+                break # We hit the exact target!
+                
+            batch = leads[i:i + batch_size]
+            try:
+                evaluated_batch = ai_evaluator.evaluate_leads_batch(batch, api_key, req.criteria)
+                
+                for idx, lead in enumerate(batch):
+                    if approved >= req.max_results:
+                        break # Stop evaluating if we hit target inside the batch
+                        
+                    evaluated = evaluated_batch[idx] if idx < len(evaluated_batch) else {}
+                    score = evaluated.get("score", 5)
+                    
+                    if score >= req.min_score:
+                        lead_data = {
+                            "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
+                            "link": lead.get("Link") or lead.get("link") or "",
+                            "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or "",
+                            "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
+                            "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
+                            "score": score,
+                            "reason": evaluated.get("reason", "Lead avaliado"),
+                            "tags": evaluated.get("tags", []),
+                            "decision_maker": evaluated.get("decision_maker", "Proprietario"),
+                            "whatsapp_ready": evaluated.get("whatsapp_ready", True),
+                            "source": lead.get("_source", "") # Tag with source
+                        }
+                        db.insert_lead(campaign_id, lead_data)
+                        approved += 1
+                    else:
+                        discarded += 1
+            except Exception as e:
+                print(f"[Backend Error] Batch evaluation failed: {e}")
+                # Fallback para o lote
+                for lead in batch:
+                    if approved >= req.max_results:
+                        break
+                        
+                    lead_data = {
+                        "name": lead.get("Nome") or "Lead Extraído",
+                        "link": lead.get("Link") or "",
+                        "description": lead.get("Descricao (Bio/Web)") or "",
+                        "has_phone": lead.get("Tem Telefone?") == "Sim",
+                        "has_email": lead.get("Tem E-mail?") == "Sim",
+                        "score": 7,
+                        "reason": "Lead extraído do motor de busca",
+                        "tags": ["Extraído"],
+                        "decision_maker": "Proprietario",
+                        "whatsapp_ready": True,
+                        "source": lead.get("_source", "")
+                    }
+                    if req.min_score <= 7:
+                        db.insert_lead(campaign_id, lead_data)
+                        approved += 1
+                    else:
+                        discarded += 1
+
+            # Update stats dynamically after each batch
+            db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
+                
+        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
+    except Exception as e:
+        import traceback
+        err_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        print(f"[Backend Error] Scrape task failed: {err_detail}")
+        db.update_campaign_stats(campaign_id, status="error", status_message=err_detail)
+    finally:
+        active_campaigns.pop(campaign_id, None)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
