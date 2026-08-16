@@ -9,15 +9,15 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=3, model="gemini-1.5-flash-latest"):
-    delays = [5, 10, 20]
+def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-1.5-flash"):
+    delays = [2, 5]
     last_err = None
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(
                 model=model,
                 contents=prompt,
-                config={"temperature": 0.2}
+                config={"temperature": 0.1}
             )
         except Exception as e:
             last_err = e
