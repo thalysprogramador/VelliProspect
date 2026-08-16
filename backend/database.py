@@ -115,7 +115,7 @@ def create_campaign(name="", niche="", region="", source="", criteria="", min_sc
     _save_local_db(db)
     return cid
 
-def update_campaign_stats(campaign_id, total_found=0, total_approved=0, total_discarded=0, status="running", status_message=None):
+def update_campaign_stats(campaign_id, total_found=0, total_approved=0, total_discarded=0, status="running", status_message=None, **kwargs):
     norm_id = _normalize_id(campaign_id)
     update_data = {
         "total_found": total_found, "total_approved": total_approved,
