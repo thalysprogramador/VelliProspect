@@ -9,13 +9,13 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=3):
+def _call_gemini_with_retry(client, prompt, max_retries=3, model="gemini-1.5-flash-latest"):
     delays = [5, 10, 20]
     last_err = None
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(
-                model="gemini-flash-latest",
+                model=model,
                 contents=prompt,
                 config={"temperature": 0.2}
             )
@@ -282,7 +282,7 @@ Voce esta dentro do software Velli Prospect e tem acesso a base de leads do usua
 
 Responda de forma objetiva, pratica e util. Use emojis com moderacao. Seja como um consultor de vendas senior conversando com o usuario."""
 
-        response = _call_gemini_with_retry(client, prompt)
+        response = _call_gemini_with_retry(client, prompt, model="gemini-1.5-flash-8b-latest")
         return response.text.strip()
 
     except Exception as e:
