@@ -22,7 +22,7 @@ app.add_middleware(
 class ScrapeRequest(BaseModel):
     niche: str
     region: str
-    source: str
+    source: list[str] | str
     criteria: str = ""
     min_score: int = 7
     max_results: int = 50
@@ -114,7 +114,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             req.max_results, req.block_large_portals
         )
         if not leads:
-            db.update_campaign_stats(campaign_id, status="completed")
+            db.delete_campaign(campaign_id)
             return
             
         db.update_campaign_stats(campaign_id, total_found=len(leads))
@@ -129,11 +129,17 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                 print(f"[Backend] Campaign {campaign_id} cancelled.")
                 break
                 
+            if approved >= req.max_results:
+                break # We hit the exact target!
+                
             batch = leads[i:i + batch_size]
             try:
                 evaluated_batch = ai_evaluator.evaluate_leads_batch(batch, api_key, req.criteria)
                 
                 for idx, lead in enumerate(batch):
+                    if approved >= req.max_results:
+                        break # Stop evaluating if we hit target inside the batch
+                        
                     evaluated = evaluated_batch[idx] if idx < len(evaluated_batch) else {}
                     score = evaluated.get("score", 5)
                     
@@ -149,6 +155,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                             "tags": evaluated.get("tags", []),
                             "decision_maker": evaluated.get("decision_maker", "Proprietario"),
                             "whatsapp_ready": evaluated.get("whatsapp_ready", True),
+                            "source": lead.get("_source", "") # Tag with source
                         }
                         db.insert_lead(campaign_id, lead_data)
                         approved += 1
@@ -158,6 +165,9 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                 print(f"[Backend Error] Batch evaluation failed: {e}")
                 # Fallback para o lote
                 for lead in batch:
+                    if approved >= req.max_results:
+                        break
+                        
                     lead_data = {
                         "name": lead.get("Nome") or "Lead Extraído",
                         "link": lead.get("Link") or "",
@@ -168,7 +178,8 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         "reason": "Lead extraído do motor de busca",
                         "tags": ["Extraído"],
                         "decision_maker": "Proprietario",
-                        "whatsapp_ready": True
+                        "whatsapp_ready": True,
+                        "source": lead.get("_source", "")
                     }
                     if req.min_score <= 7:
                         db.insert_lead(campaign_id, lead_data)
@@ -179,10 +190,15 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             # Update stats dynamically after each batch
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
                 
-        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
+        # End of loop
+        if approved == 0:
+            print(f"[Backend] Campaign {campaign_id} deleted because 0 leads were approved.")
+            db.delete_campaign(campaign_id)
+        else:
+            db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
     except Exception as e:
         print(f"[Backend Error] Scrape task failed: {e}")
-        db.update_campaign_stats(campaign_id, status="completed")
+        db.delete_campaign(campaign_id)
     finally:
         active_campaigns.pop(campaign_id, None)
 
