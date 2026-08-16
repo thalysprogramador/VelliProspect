@@ -7,10 +7,7 @@ import re
 import time
 import traceback
 
-try:
-    from ddgs import DDGS
-except ImportError:
-    from duckduckgo_search import DDGS
+# Pure Python requests search engine (no C extension segfaults)
 
 try:
     from googlesearch import search as google_search
@@ -148,17 +145,6 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
     if bing_res:
         print(f"[Scraper] Busca Bing OK: {len(bing_res)} resultados")
         return bing_res
-
-    # Secondary engine: DDGS API
-    for attempt in range(max_retries):
-        try:
-            ddgs = DDGS()
-            results = list(ddgs.text(query, backend="api", max_results=min(max_results, 30)))
-            if results:
-                print(f"[Scraper] Busca DDG API OK: {len(results)} resultados")
-                return results
-        except Exception as e:
-            time.sleep(0.3)
 
     return []
     
