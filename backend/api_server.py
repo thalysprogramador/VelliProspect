@@ -97,14 +97,17 @@ def copilot_chat_endpoint(req: CopilotRequest):
         print(f"[Copilot Error] {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+import threading
+
 @app.post("/api/campaigns")
-def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
+def create_campaign(req: ScrapeRequest):
     camp_name = f"{req.niche} em {req.region}"
     cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
     if not cid:
         raise HTTPException(status_code=500, detail="Error creating campaign")
     
-    background_tasks.add_task(run_scrape_task, cid, req)
+    t = threading.Thread(target=run_scrape_task, args=(cid, req), daemon=True)
+    t.start()
     return {"status": "started", "campaign": {"id": cid}}
 
 def run_scrape_task(campaign_id: str, req: ScrapeRequest):
