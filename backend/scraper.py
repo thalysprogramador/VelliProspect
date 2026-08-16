@@ -12,6 +12,11 @@ try:
 except ImportError:
     from duckduckgo_search import DDGS
 
+try:
+    from googlesearch import search as google_search
+except ImportError:
+    google_search = None
+
 BLOCKED_DOMAINS = [
     "guiamais.com.br", "apontador.com.br", "facebook.com", "linkedin.com",
     "jusbrasil.com.br", "g1.globo.com", "wikipedia.org", "youtube.com",
@@ -131,19 +136,36 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
             else:
                 time.sleep(1)
 
-    print(f"[Scraper] FALHA apos {max_retries} tentativas. Ultimo erro: {last_error}")
+    print(f"[Scraper] DDGS FALHOU apos {max_retries} tentativas. Tentando Google Search fallback...")
+    
+    if google_search is not None:
+        try:
+            results = []
+            for url in google_search(query, num_results=max_results, lang="pt"):
+                results.append({"href": url, "title": "Google Result", "body": "Scraped via Google Search Fallback"})
+            if results:
+                print(f"[Scraper] Google Fallback OK: {len(results)} resultados")
+                return results
+        except Exception as ge:
+            print(f"[Scraper] Google Fallback falhou: {ge}")
+            
     return []
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
     leads = []
     source_config = SOURCES.get(source_key, SOURCES["maps"])
     query = source_config["query_template"].format(niche=niche, region=region)
-    skip_domain = source_config["skip_domain_filter"]
+    if source_key == "fallback":
+        query = f"{niche} {region} contato site:.com.br"
+        skip_domain = False
+    else:
+        skip_domain = source_config["skip_domain_filter"]
 
     print(f"[Scraper] Buscando: '{query}' (fonte: {source_key}, max: {max_results})")
 
     try:
-        fetch_count = min(max_results * 3, 300)
+        # Cap fetch_count at 40 to avoid DDGS rate limits and long hangs
+        fetch_count = min(max_results * 2, 40)
         results = _ddgs_search_with_retry(query, fetch_count)
 
         if not results:
@@ -213,8 +235,8 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     return leads
 
 def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
-    # Target pool size optimized to avoid long idle times (e.g. 2x requested amount, max 80)
-    target_pool = max(min(max_results * 2, 80), 20)
+    # Target pool size optimized. If they want 100, we try to fetch 150.
+    target_pool = min(max_results * 2, 200)
     
     print(f"\n{'='*60}")
     print(f"[Scraper] INICIO OTIMIZADO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
@@ -255,6 +277,16 @@ def scrape_leads(niche, region, sources, max_results=100, block_large_portals=Tr
         
         # Small delay between source queries to prevent rate limits
         time.sleep(1)
+        
+    # If we didn't reach the target, let's do a fallback generic query on Google if available
+    if len(all_leads) < target_pool // 2 and google_search is not None:
+        print("[Scraper] Acionando Google Fallback generico para complementar base...")
+        try:
+            fallback_q = f"{niche} {region} contato"
+            batch = _scrape_single_source(niche, region, "fallback", min(50, target_pool - len(all_leads)), False, on_progress)
+            all_leads.extend(batch)
+        except Exception as e:
+            pass
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
