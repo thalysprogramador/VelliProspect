@@ -119,22 +119,16 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
     for attempt in range(max_retries):
         try:
             ddgs = DDGS()
-            results = list(ddgs.text(query, backend="lite", max_results=max_results))
+            # Strict limit to 30 results for fast response
+            results = list(ddgs.text(query, backend="lite", max_results=min(max_results, 30)))
             if results:
                 print(f"[Scraper] Busca OK: {len(results)} resultados (tentativa {attempt+1})")
                 return results
             else:
-                if attempt < max_retries - 1:
-                    time.sleep(1)
                 continue
         except Exception as e:
             last_error = e
-            error_str = str(e).lower()
-            print(f"[Scraper] Erro tentativa {attempt+1}: {type(e).__name__}: {str(e)[:100]}")
-            if "ratelimit" in error_str or "429" in error_str:
-                time.sleep(2)
-            else:
-                time.sleep(1)
+            time.sleep(0.5)
 
     print(f"[Scraper] DDGS FALHOU apos {max_retries} tentativas. Tentando Google Search fallback...")
     
@@ -234,12 +228,13 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
-    # Target pool size optimized. If they want 100, we try to fetch 150.
-    target_pool = min(max_results * 2, 200)
+    target_pool = min(max_results * 2, 100)
     
     print(f"\n{'='*60}")
-    print(f"[Scraper] INICIO OTIMIZADO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
+    print(f"[Scraper] INICIO PARALELO TURBO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
     print(f"{'='*60}")
 
     all_leads = []
@@ -257,36 +252,21 @@ def scrape_leads(niche, region, sources, max_results=100, block_large_portals=Tr
 
     per_source = max(target_pool // len(source_keys), 15)
 
-    # Sequential search to avoid DDGS IP-Ban/Rate Limits (429) that happen with ThreadPoolExecutor
-    for src_key in source_keys:
-        if len(all_leads) >= target_pool:
-            break
-
-        remaining = target_pool - len(all_leads)
-        batch_size = min(per_source, remaining)
-
-        try:
-            batch = _scrape_single_source(
-                niche, region, src_key, batch_size,
-                block_large_portals, on_progress
-            )
-            all_leads.extend(batch)
-            print(f"[Scraper] Total acumulado: {len(all_leads)} leads")
-        except Exception as e:
-            print(f"[Scraper] Fonte '{src_key}' falhou, continuando: {e}")
+    # Parallel scraping across sources with ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(len(source_keys), 6)) as executor:
+        future_to_source = {
+            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress): src_key
+            for src_key in source_keys
+        }
         
-        # Small delay between source queries to prevent rate limits
-        time.sleep(1)
-        
-    # If we didn't reach the target, let's do a fallback generic query on Google if available
-    if len(all_leads) < target_pool // 2 and google_search is not None:
-        print("[Scraper] Acionando Google Fallback generico para complementar base...")
-        try:
-            fallback_q = f"{niche} {region} contato"
-            batch = _scrape_single_source(niche, region, "fallback", min(50, target_pool - len(all_leads)), False, on_progress)
-            all_leads.extend(batch)
-        except Exception as e:
-            pass
+        for future in as_completed(future_to_source, timeout=10):
+            src_key = future_to_source[future]
+            try:
+                batch = future.result(timeout=1)
+                all_leads.extend(batch)
+                print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
+            except Exception as e:
+                print(f"[Scraper] Fonte '{src_key}' falhou ou timeout: {e}")
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
