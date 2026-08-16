@@ -119,7 +119,7 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
     for attempt in range(max_retries):
         try:
             ddgs = DDGS()
-            results = list(ddgs.text(query, max_results=max_results))
+            results = list(ddgs.text(query, backend="lite", max_results=max_results))
             if results:
                 print(f"[Scraper] Busca OK: {len(results)} resultados (tentativa {attempt+1})")
                 return results
