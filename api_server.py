@@ -98,18 +98,18 @@ def copilot_chat_endpoint(req: CopilotRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/campaigns")
-def create_campaign(req: ScrapeRequest):
+def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
     try:
         camp_name = f"{req.niche} em {req.region}"
         cid = db.create_campaign(camp_name, req.niche, req.region, req.source, req.criteria, req.min_score, req.max_results)
         if not cid:
             raise HTTPException(status_code=500, detail="Error creating campaign DB returned None")
         
-        # Ultra-fast synchronous execution (0.8s) guarantees 100% completion without thread freezes
-        run_scrape_task(cid, req)
+        # Executar em background para que a UI receba "scraping" e atualize em tempo real
+        background_tasks.add_task(run_scrape_task, cid, req)
         
-        comp_data = db.get_campaign(cid) or {"id": cid, "status": "completed"}
-        return {"status": "completed", "campaign": comp_data}
+        comp_data = db.get_campaign(cid) or {"id": cid, "status": "scraping"}
+        return {"status": "scraping", "campaign": comp_data}
     except Exception as e:
         import traceback
         err_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
