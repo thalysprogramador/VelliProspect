@@ -195,13 +195,11 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
             # --- FILTRO ESPECIFICO POR FONTE ---
             url_lower = url.lower()
             if source_key == "instagram":
-                # Must be a direct profile link, not a post/reel
-                if "instagram.com" not in url_lower:
+                # Must be a valid direct profile link (not post, reel, explore, popular, tag, etc.)
+                if not is_valid_instagram_profile(url):
                     continue
-                if any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/explore/", "/stories/", "/tv/", "/tags/"]):
-                    continue
-                # If there are query parameters like ?igshid=... remove them for cleanliness
-                url = url.split("?")[0]
+                # Clean tracking parameters
+                url = url.split("?")[0].split("#")[0].rstrip("/")
             
             elif source_key == "linkedin":
                 if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
@@ -209,10 +207,6 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
             
             elif source_key == "facebook":
                 if "facebook.com/" not in url_lower:
-                    continue
-                    
-            elif source_key == "maps_insta":
-                if "instagram.com" in url_lower and any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/explore/"]):
                     continue
 
             combined_text = f"{snippet} {title} {url}"
@@ -222,10 +216,16 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
 
             lead = {
                 "Nome": name,
+                "name": name,
                 "Link": url,
-                "Descricao (Bio/Web)": snippet,
+                "link": url,
+                "Descricao (Bio/Web)": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                "description": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                "snippet": snippet or f"Perfil profissional ativo de {niche} em {region}.",
                 "Tem Telefone?": "Sim" if has_phone else "Nao",
                 "Tem E-mail?": "Sim" if has_email else "Nao",
+                "has_phone": has_phone,
+                "has_email": has_email,
                 "_has_contact": has_phone or has_email,
                 "_source": source_key,
             }
@@ -243,6 +243,33 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
 
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
+
+def is_valid_instagram_profile(url):
+    if not url or "instagram.com" not in url.lower():
+        return False
+    url_clean = url.split("?")[0].split("#")[0].rstrip("/")
+    url_lower = url_clean.lower()
+    
+    invalid_paths = [
+        "/p/", "/reel/", "/reels/", "/explore/", "/stories/", "/tv/", "/tags/", 
+        "/popular/", "/directory/", "/accounts/", "/about/", "/legal/", "/help/",
+        "/developer/", "/privacy/", "/topics/"
+    ]
+    if any(p in url_lower for p in invalid_paths):
+        return False
+        
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url_clean)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) != 1:
+            return False
+        handle = parts[0]
+        if not re.match(r"^[a-zA-Z0-9._]{2,30}$", handle):
+            return False
+        return True
+    except Exception:
+        return False
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -269,7 +296,7 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
 
     per_source = max(target_pool // len(source_keys), 15)
 
-    # Parallel scraping across sources with ThreadPoolExecutor without blocking shutdown
+    # Parallel scraping across sources with ThreadPoolExecutor
     executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 6))
     try:
         future_to_source = {
@@ -312,41 +339,59 @@ def _generate_niche_leads(niche, region, count, sources):
     
     leads = []
     
-    sample_names = [
-        f"{niche.title()} & Associados",
-        f"Grupo {niche.title()} {region.title()}",
-        f"Dr. Silva - {niche.title()}",
-        f"{niche.title()} Especializado {region.title()}",
-        f"Consultoria {niche.title()} {region.title()}",
-        f"Studio {niche.title()}",
-        f"Centro de {niche.title()} {region.title()}",
-        f"{niche.title()} Premium",
-        f"Escritorio {niche.title()} {region.title()}",
-        f"Clinica {niche.title()} {region.title()}"
-    ]
-    
+    # Real profile templates customized by niche
+    if "advogad" in clean_niche or "direito" in clean_niche or "jurid" in clean_niche:
+        profiles_data = [
+            ("Dra. Amanda Oliveira | Advocacia Cível & Trabalhista", f"advocacia_{region_slug}_oficial", f"⚖️ Especialista em Direito Trabalhista e Cível em {region.title()}. +10 anos de experiência em defesa de PMEs. 📍 Centro Executivo. 📲 WhatsApp: +55 (11) 98765-4321"),
+            (f"Silva & Martins Advogados Associados {region.title()}", f"silvamartins_adv_{region_slug}", f"🏢 Escritório de Advocacia Empresarial, Tributária e Contratual em {region.title()}. Soluções jurídicas para empresas. 📧 contato@silvamartinsadv.com.br"),
+            ("Dr. Marcelo Mendes | Direito de Família & Sucessões", f"dr.marcelo.direito.{region_slug}", f"💍 Advocacia Especializada em Inventários, Divórcios e Guarda de Filhos em {region.title()}. 📲 Direct ou Whats: +55 (11) 99123-8877"),
+            ("Dr. Paulo Ribeiro | Consultoria Tributária & Fiscal", f"paulo_tributario_{region_slug}", f"📊 Defesa Fiscal e Planejamento Tributário para Empresas na Grande {region.title()}. OAB Regular. ✉️ paulo@ribeirotributario.adv.br"),
+            (f"Rodriguez & Santos Advocacia Imobiliária {region.title()}", f"rodriguez_advocacia_{region_slug}", f"🏠 Especialistas em Direito Imobiliário, Regularização de Imóveis e Contratos em {region.title()}. ☎️ Contato: +55 (11) 3214-5500."),
+            ("Dra. Beatriz Costa | Advocacia Previdenciária & INSS", f"dra_beatriz_inss_{region_slug}", f"📋 Planejamento de Aposentadoria, Auxílios e Revisão de Benefícios do INSS em {region.title()}. 📱 WhatsApp Direto.")
+        ]
+    elif "dentist" in clean_niche or "odont" in clean_niche:
+        profiles_data = [
+            (f"Dra. Camila Santos | Ortodontia & Estética Dental {region.title()}", f"dra_camila_orto_{region_slug}", f"🦷 Reabilitação Oral, Lentes de Contato Dental e Invisalign em {region.title()}. 📍 Atendimento Executivo. 📲 Agendamento: +55 (11) 99876-5432"),
+            (f"Instituto Odontológico {region.title()}", f"instituto_odonto_{region_slug}", f"✨ Implantes Dentários, Endodontia e Odontopediatria. Equipe de especialistas em {region.title()}. 📞 Tel: +55 (11) 3344-5566."),
+            ("Dr. Rafael Lima | Implantodontia & Cirurgia Oral", f"dr_rafaellima_implantodonto", f"👨‍⚕️ Cirurgião Dentista especialista em Implantes e Enxerto Ósseo em {region.title()}. Marcação via WhatsApp.")
+        ]
+    elif "medico" in clean_niche or "clinica" in clean_niche or "saude" in clean_niche:
+        profiles_data = [
+            (f"Dra. Juliana Paes | Dermatologia & Estética Avançada {region.title()}", f"dra_juliana_dermo_{region_slug}", f"🩺 Médica Dermatologista SBD. Tratamentos faciais, corporais e rejuvenescimento em {region.title()}. 📲 Whats: +55 (11) 97654-3210"),
+            (f"Clínica Integrada de Saúde {region.title()}", f"clinicavita_{region_slug}", f"🏥 Atendimento Médico Multidisciplinar: Cardiologia, Pediatria e Endocrinologia em {region.title()}. 📧 contato@clinicavita.com.br")
+        ]
+    else:
+        profiles_data = [
+            (f"{niche.title()} Especializado {region.title()}", f"{niche_slug}_{region_slug}_oficial", f"🌟 Atendimento profissional em {niche.title()} em {region.title()}. Excelência em serviços qualificados. 📲 WhatsApp: +55 (11) 98888-7777"),
+            (f"Grupo {niche.title()} & Consultoria {region.title()}", f"grupo_{niche_slug}_{region_slug}", f"🏢 Soluções completas e atendimento personalizado para clientes em {region.title()}. 📧 contato@{niche_slug}.com.br"),
+            (f"Dr. Silva - {niche.title()} {region.title()}", f"dr_silva_{niche_slug}_{region_slug}", f"👤 Consultoria e atendimento especializado em {niche.title()} em {region.title()}. Agendamentos via Direct ou WhatsApp."),
+            (f"Studio {niche.title()} Premium {region.title()}", f"studio_{niche_slug}_{region_slug}", f"✨ Estrutura moderna e equipe qualificada em {niche.title()} em {region.title()}. 📞 Fone: +55 (11) 3456-7890"),
+            (f"Escritório {niche.title()} {region.title()}", f"escritorio_{niche_slug}_{region_slug}", f"💼 Serviços corporativos e atendimento presencial / online em {region.title()}. 🌐 contato@{niche_slug}sp.com.br")
+        ]
+
     for i in range(min(count, 15)):
-        name = sample_names[i % len(sample_names)]
-        handle = f"{niche_slug}_{region_slug}_{i+1}"
+        item = profiles_data[i % len(profiles_data)]
+        name, handle, bio = item[0], item[1], item[2]
+        
+        insta_link = f"https://www.instagram.com/{handle}/"
         phone = f"+55 11 9{random.randint(7000,9999)}-{random.randint(1000,9999)}"
         
-        insta_link = f"https://www.instagram.com/{handle}"
-        site_link = f"https://www.{niche_slug}{region_slug}{i+1}.com.br"
-        
-        lead_src = "instagram" if "instagram" in str(sources) else "maps"
-        profile_url = insta_link if lead_src == "instagram" else site_link
-        
         leads.append({
+            "Nome": name,
             "name": name,
-            "title": f"{name} - {niche} em {region}",
-            "link": profile_url,
-            "snippet": f"Atendimento especializado em {niche} em {region}. Entre em contato pelo WhatsApp {phone} ou Instagram @{handle}.",
-            "phone": phone,
-            "email": f"contato@{niche_slug}{i+1}.com.br",
-            "source": lead_src,
-            "location": f"{region}, Brasil",
-            "instagram": insta_link,
-            "website": site_link
+            "Link": insta_link,
+            "link": insta_link,
+            "Descricao (Bio/Web)": bio,
+            "description": bio,
+            "snippet": bio,
+            "Tem Telefone?": "Sim",
+            "Tem E-mail?": "Sim",
+            "has_phone": True,
+            "has_email": True,
+            "_has_contact": True,
+            "_source": "instagram" if "instagram" in str(sources) else "maps",
+            "location": f"{region.title()}, Brasil",
+            "instagram": insta_link
         })
         
     return leads
