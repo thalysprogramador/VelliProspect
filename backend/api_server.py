@@ -125,10 +125,10 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             sources=req.source,
             max_results=req.max_results,
             block_large_portals=req.block_large_portals,
-            on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, status_message=f"Extraindo: {p[:20]}...", total_found=n)
+            on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, total_found=n)
         )
         if not leads:
-            db.update_campaign_stats(campaign_id, status="error", status_message="Nenhum contato encontrado pelas fontes (Tente mudar o nicho/regiao).")
+            db.update_campaign_stats(campaign_id, status="error")
             return
             
         db.update_campaign_stats(campaign_id, total_found=len(leads))
@@ -207,7 +207,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
         db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed", status_message=f"Concluído com {approved} leads qualificados.")
     except Exception as e:
         print(f"[Backend Error] Scrape task failed: {e}")
-        db.update_campaign_stats(campaign_id, status="error", status_message=f"Erro no processamento: {str(e)[:40]}")
+        db.update_campaign_stats(campaign_id, status="error")
     finally:
         active_campaigns.pop(campaign_id, None)
 
