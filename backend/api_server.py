@@ -206,8 +206,10 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                 
         db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
     except Exception as e:
-        print(f"[Backend Error] Scrape task failed: {e}")
-        db.update_campaign_stats(campaign_id, status="error")
+        import traceback
+        err_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        print(f"[Backend Error] Scrape task failed: {err_detail}")
+        db.update_campaign_stats(campaign_id, status="error", status_message=err_detail)
     finally:
         active_campaigns.pop(campaign_id, None)
 
