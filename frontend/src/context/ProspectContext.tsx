@@ -75,7 +75,8 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
             const approved = data.total_approved || 0;
             const discarded = data.total_discarded || 0;
             const target = data.max_results || maxResults || 10;
-            const percent = Math.min(100, Math.round((approved / target) * 100));
+            const percentValue = (approved / target) * 100;
+            const percent = isNaN(percentValue) ? 0 : Math.min(100, Math.round(percentValue));
             
             setTotalFound(found);
             setTotalApproved(approved);
@@ -119,6 +120,10 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setCampaignId(data.campaign?.id || null);
         setStatus("scraping");
+        setTotalFound(0);
+        setTotalApproved(0);
+        setTotalDiscarded(0);
+        setProgressPercent(0);
         setStatusMessage("Fazendo varredura... buscando empresas na região informada...");
       } else {
         setStatus("error");
