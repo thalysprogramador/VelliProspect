@@ -9,15 +9,15 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-1.5-flash"):
-    delays = [2, 5]
+def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-2.5-flash"):
+    delays = [1, 2]
     last_err = None
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(
                 model=model,
                 contents=prompt,
-                config={"temperature": 0.1}
+                config={"temperature": 0.1, "http_options": {"timeout": 5.0}}
             )
         except Exception as e:
             last_err = e
@@ -138,8 +138,10 @@ def _heuristic_evaluation(leads):
         })
     return results
 
+LEAKED_KEYS = ["AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"]
+
 def evaluate_leads_batch(leads, api_key, criteria):
-    if not api_key:
+    if not api_key or api_key in LEAKED_KEYS:
         return _heuristic_evaluation(leads)
         
     leads_context = ""
