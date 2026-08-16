@@ -252,21 +252,26 @@ def scrape_leads(niche, region, sources, max_results=100, block_large_portals=Tr
 
     per_source = max(target_pool // len(source_keys), 15)
 
-    # Parallel scraping across sources with ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=min(len(source_keys), 6)) as executor:
+    # Parallel scraping across sources with ThreadPoolExecutor without blocking shutdown
+    executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 6))
+    try:
         future_to_source = {
             executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress): src_key
             for src_key in source_keys
         }
         
-        for future in as_completed(future_to_source, timeout=10):
+        for future in as_completed(future_to_source, timeout=12):
             src_key = future_to_source[future]
             try:
-                batch = future.result(timeout=1)
+                batch = future.result(timeout=2)
                 all_leads.extend(batch)
                 print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
             except Exception as e:
                 print(f"[Scraper] Fonte '{src_key}' falhou ou timeout: {e}")
+    except Exception as e:
+        print(f"[Scraper] Timeout/Erro geral na raspagem paralela: {e}")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
