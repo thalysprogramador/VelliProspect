@@ -246,7 +246,8 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
+def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, **kwargs):
+    sources = sources or source or ALL_SOURCES_KEY
     target_pool = min(max_results * 2, 100)
     
     print(f"\n{'='*60}")
