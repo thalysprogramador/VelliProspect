@@ -76,28 +76,37 @@ def _normalize_id(val):
 
 # === Campaigns ===
 def create_campaign(name="", niche="", region="", source="", criteria="", min_score=7, max_results=100):
-    import time, json
-    # Fits 32-bit integer (max 2147483647) for Postgres int4 compatibility
-    cid = int(time.time() * 10) % 2000000000
-    
+    import time, json, random
     source_val = json.dumps(source) if isinstance(source, (list, dict)) else str(source)
     
     data = {
-        "id": cid,
         "name": name, "niche": niche, "region": region, "source": source_val,
         "criteria": criteria, "min_score": min_score, "max_results": max_results,
         "status": "running", "created_at": datetime.now().isoformat(),
         "total_approved": 0, "total_found": 0, "total_discarded": 0,
     }
-
+    
     supabase = get_connection()
     if not _use_local and supabase:
-        response = _safe_execute(lambda: supabase.table("campaigns").insert(data).execute())
-        if response and response.data and len(response.data) > 0:
-            res_id = response.data[0].get("id")
-            if res_id:
-                cid = res_id
+        try:
+            res = supabase.table("campaigns").insert(data).execute()
+            if res.data:
+                cid = res.data[0]["id"]
                 data["id"] = cid
+                db = _load_local_db()
+                db["campaigns"].insert(0, data)
+                _save_local_db(db)
+                return cid
+        except Exception as e:
+            print(f"[DB Error] create_campaign Supabase: {e}")
+
+    # Fallback for local JSON
+    cid = (int(time.time() * 10) + random.randint(1, 999)) % 2000000000
+    data["id"] = cid
+    db = _load_local_db()
+    db["campaigns"].insert(0, data)
+    _save_local_db(db)
+    return cid
 
     db = _load_local_db()
     db.setdefault("campaigns", []).insert(0, data)
@@ -165,13 +174,11 @@ def delete_campaign(campaign_id):
     db["leads"] = [l for l in db.get("leads", []) if str(l.get("campaign_id")) != str(campaign_id)]
     _save_local_db(db)
 
-# === Leads ===
 def insert_lead(campaign_id, lead_data):
     norm_cid = _normalize_id(campaign_id)
     import time, random
-    lead_id = (int(time.time() * 100) + random.randint(1, 9999)) % 2000000000
+    
     data = {
-        "id": lead_id,
         "campaign_id": norm_cid,
         "name": lead_data.get("name", ""),
         "link": lead_data.get("link", ""),
@@ -189,7 +196,15 @@ def insert_lead(campaign_id, lead_data):
 
     supabase = get_connection()
     if not _use_local and supabase:
-        _safe_execute(lambda: supabase.table("leads").insert(data).execute())
+        try:
+            res = supabase.table("leads").insert(data).execute()
+            if res.data:
+                data["id"] = res.data[0]["id"]
+        except Exception as e:
+            print(f"[DB Error] insert_lead Supabase: {e}")
+
+    if "id" not in data:
+        data["id"] = (int(time.time() * 100) + random.randint(1, 9999)) % 2000000000
 
     db = _load_local_db()
     db["leads"].insert(0, data)
