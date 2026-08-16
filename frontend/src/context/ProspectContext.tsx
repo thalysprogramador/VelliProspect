@@ -122,13 +122,33 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
       
       if (res.ok) {
         const data = await res.json();
-        setCampaignId(data.campaign?.id || null);
-        setStatus("scraping");
-        setTotalFound(0);
-        setTotalApproved(0);
-        setTotalDiscarded(0);
-        setProgressPercent(0);
-        setStatusMessage("Fazendo varredura... buscando empresas na região informada...");
+        const cid = data.campaign?.id || null;
+        setCampaignId(cid);
+        
+        if (data.status === "completed" && cid) {
+          try {
+            const leadsRes = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${cid}/leads`);
+            if (leadsRes.ok) {
+              const leadsData = await leadsRes.json();
+              setLeads(leadsData);
+            }
+          } catch (e) {
+            console.error("Error fetching instant leads", e);
+          }
+          setStatus("completed");
+          setTotalFound(data.campaign?.total_found || 0);
+          setTotalApproved(data.campaign?.total_approved || 0);
+          setTotalDiscarded(data.campaign?.total_discarded || 0);
+          setProgressPercent(100);
+          setStatusMessage(data.campaign?.status_message || "Prospecção concluída com sucesso!");
+        } else {
+          setStatus("scraping");
+          setTotalFound(0);
+          setTotalApproved(0);
+          setTotalDiscarded(0);
+          setProgressPercent(0);
+          setStatusMessage("Fazendo varredura... buscando empresas na região informada...");
+        }
       } else {
         setStatus("error");
         setStatusMessage("Erro ao iniciar a prospecção. Tente novamente.");
