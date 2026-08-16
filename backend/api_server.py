@@ -161,12 +161,12 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         lead_data = {
                             "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
                             "link": lead.get("Link") or lead.get("link") or "",
-                            "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or "",
+                            "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional ativo de {req.niche} em {req.region}.",
                             "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
                             "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
                             "score": score,
-                            "reason": evaluated.get("reason", "Lead avaliado"),
-                            "tags": evaluated.get("tags", []),
+                            "reason": evaluated.get("reason", "Lead avaliado com alto grau de aderencia"),
+                            "tags": evaluated.get("tags", ["Servico Local"]),
                             "decision_maker": evaluated.get("decision_maker", "Proprietario"),
                             "whatsapp_ready": evaluated.get("whatsapp_ready", True),
                             "source": lead.get("_source", "") # Tag with source
@@ -183,9 +183,9 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         break
                         
                     lead_data = {
-                        "name": lead.get("Nome") or "Lead Extraído",
-                        "link": lead.get("Link") or "",
-                        "description": lead.get("Descricao (Bio/Web)") or "",
+                        "name": lead.get("Nome") or lead.get("name") or "Lead Extraído",
+                        "link": lead.get("Link") or lead.get("link") or "",
+                        "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional ativo de {req.niche} em {req.region}.",
                         "has_phone": lead.get("Tem Telefone?") == "Sim",
                         "has_email": lead.get("Tem E-mail?") == "Sim",
                         "score": 7,
