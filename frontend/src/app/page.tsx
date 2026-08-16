@@ -85,6 +85,16 @@ export default function Prospect() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!campaignId) return;
+    try {
+      await fetch(`https://velli-prospect.onrender.com/api/campaigns/${campaignId}/cancel`, { method: "POST" });
+    } catch {}
+    setStatus("idle");
+    setStatusMessage("");
+    setCampaignId(null);
+  };
+
   const handleReset = () => {
     setStatus("idle");
     setStatusMessage("");
@@ -104,21 +114,21 @@ export default function Prospect() {
   };
 
   return (
-    <div className="min-h-screen p-10 lg:p-20 flex flex-col items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen p-4 md:p-10 lg:p-20 flex flex-col items-center justify-center relative overflow-hidden">
       {/* Background blobs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
       
-      <div className="w-full max-w-4xl flex flex-col items-center text-center z-10 space-y-6">
-        <img src="/logo_velli_white.png" alt="Velli Marketing" className="h-20 mb-2 object-contain" />
-        <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
+      <div className="w-full max-w-4xl flex flex-col items-center text-center z-10 space-y-4 md:space-y-6">
+        <img src="/logo_velli_white.png" alt="Velli Marketing" className="h-16 md:h-20 mb-2 object-contain" />
+        <h1 className="text-4xl md:text-5xl lg:text-7xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
           Velli Prospect
         </h1>
-        <p className="text-xl text-gray-400 font-medium max-w-2xl">
+        <p className="text-lg md:text-xl text-gray-400 font-medium max-w-2xl px-4">
           Transformando negócios comuns em marcas extraordinárias.
         </p>
 
-        <div className="w-full max-w-2xl mt-12 glass-panel p-8 rounded-3xl flex flex-col gap-6 relative group">
+        <div className="w-full max-w-2xl mt-8 md:mt-12 glass-panel p-6 md:p-8 rounded-3xl flex flex-col gap-6 relative group">
           <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
           
           <div className="flex flex-col gap-2 text-left">
@@ -171,8 +181,8 @@ export default function Prospect() {
             />
           </div>
 
-          <div className="flex gap-4">
-            <div className="flex flex-col gap-2 text-left w-1/2">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col gap-2 text-left w-full md:w-1/2">
               <label className="text-sm font-semibold text-gray-300 ml-2">Máximo de Resultados</label>
               <input 
                 type="number" 
@@ -182,7 +192,7 @@ export default function Prospect() {
                 className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white disabled:opacity-50"
               />
             </div>
-            <div className="flex flex-col gap-2 text-left w-1/2">
+            <div className="flex flex-col gap-2 text-left w-full md:w-1/2">
               <label className="text-sm font-semibold text-gray-300 ml-2">Nota de Corte (0 a 10)</label>
               <input 
                 type="number" 
@@ -237,9 +247,18 @@ export default function Prospect() {
               </div>
             </button>
           ) : status === "scraping" || status === "starting" || status === "evaluating" ? (
-            <div className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-6 py-4 flex items-center justify-center gap-3">
-              <Radio className="text-blue-400 animate-pulse" size={20} />
-              <span className="text-sm font-bold text-blue-400 uppercase tracking-wider">Prospecção em Andamento...</span>
+            <div className="mt-2 flex flex-col md:flex-row gap-3">
+              <div className="w-full rounded-2xl bg-white/5 border border-white/10 px-6 py-4 flex items-center justify-center gap-3">
+                <Radio className="text-blue-400 animate-pulse" size={20} />
+                <span className="text-sm font-bold text-blue-400 uppercase tracking-wider">Prospecção em Andamento...</span>
+              </div>
+              <button 
+                onClick={handleCancel}
+                className="w-full md:w-auto rounded-2xl bg-red-500/10 border border-red-500/30 px-6 py-4 flex items-center justify-center gap-2 hover:bg-red-500/20 transition-colors text-red-400"
+              >
+                <XCircle size={20} />
+                <span className="text-sm font-bold uppercase tracking-wider">Cancelar</span>
+              </button>
             </div>
           ) : null}
         </div>
