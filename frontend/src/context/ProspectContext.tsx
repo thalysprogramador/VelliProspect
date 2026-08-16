@@ -22,7 +22,10 @@ interface ProspectContextProps {
   statusMessage: string;
   setStatusMessage: (val: string) => void;
   campaignId: string | null;
-  setCampaignId: (val: string | null) => void;
+  totalApproved: number;
+  totalDiscarded: number;
+  totalFound: number;
+  progressPercent: number;
   handleStart: () => Promise<void>;
   handleCancel: () => Promise<void>;
   handleReset: () => void;
@@ -40,6 +43,10 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ProspectStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [totalApproved, setTotalApproved] = useState(0);
+  const [totalDiscarded, setTotalDiscarded] = useState(0);
+  const [totalFound, setTotalFound] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Poll campaign status while active
@@ -56,13 +63,26 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
           const data = await r.json();
           if (data.status === "completed") {
             setStatus("completed");
+            setTotalApproved(data.total_approved || 0);
+            setTotalDiscarded(data.total_discarded || 0);
+            setTotalFound(data.total_found || 0);
+            setProgressPercent(100);
             setStatusMessage(`Prospecção finalizada! ${data.total_approved || 0} leads qualificados encontrados.`);
             if (pollRef.current) clearInterval(pollRef.current);
           } else {
             setStatus("scraping");
             const found = data.total_found || 0;
             const approved = data.total_approved || 0;
-            setStatusMessage(`Fazendo varredura... ${found} extraídos, ${approved} aprovados pela IA`);
+            const discarded = data.total_discarded || 0;
+            const target = data.max_results || maxResults || 10;
+            const percent = Math.min(100, Math.round((approved / target) * 100));
+            
+            setTotalFound(found);
+            setTotalApproved(approved);
+            setTotalDiscarded(discarded);
+            setProgressPercent(percent);
+            
+            setStatusMessage(`Analisando... Aprovados: ${approved}/${target} (${percent}%) | Avaliados: ${approved + discarded}/${found}`);
           }
         }
       } catch {
@@ -138,6 +158,7 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
       status, setStatus,
       statusMessage, setStatusMessage,
       campaignId, setCampaignId,
+      totalApproved, totalDiscarded, totalFound, progressPercent,
       handleStart, handleCancel, handleReset
     }}>
       {children}
