@@ -30,7 +30,7 @@ BLOCKED_DOMAINS = [
 
 SOURCES = {
     "instagram": {
-        "query_template": "site:instagram.com {niche} {region}",
+        "query_template": "{niche} {region} instagram perfil contato",
         "skip_domain_filter": True,
     },
     "maps": {
@@ -38,19 +38,19 @@ SOURCES = {
         "skip_domain_filter": False,
     },
     "linkedin": {
-        "query_template": "site:linkedin.com/company {niche} {region}",
+        "query_template": "{niche} {region} linkedin perfil empresa contato",
         "skip_domain_filter": True,
     },
     "maps_insta": {
-        "query_template": "{niche} {region} contato site:google.com/maps OR site:instagram.com",
+        "query_template": "{niche} {region} contato instagram whatsapp",
         "skip_domain_filter": True,
     },
     "facebook": {
-        "query_template": "site:facebook.com {niche} {region}",
+        "query_template": "{niche} {region} facebook pagina contato",
         "skip_domain_filter": True,
     },
     "Sites Proprios": {
-        "query_template": "{niche} {region} contato site:.com.br",
+        "query_template": "{niche} {region} contato site empresa",
         "skip_domain_filter": False,
     },
 }
