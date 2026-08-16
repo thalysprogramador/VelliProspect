@@ -105,7 +105,11 @@ def create_campaign(req: ScrapeRequest):
         raise HTTPException(status_code=500, detail="Error creating campaign")
     
     # Ultra-fast synchronous execution (0.8s) guarantees 100% completion without thread freezes
-    run_scrape_task(cid, req)
+    try:
+        run_scrape_task(cid, req)
+    except Exception as e:
+        print(f"[Backend Error] Sync scrape failed: {e}")
+        db.update_campaign_stats(cid, status="error", status_message=f"Erro: {str(e)[:40]}")
     
     comp_data = db.get_campaign(cid) or {"id": cid, "status": "completed"}
     return {"status": "completed", "campaign": comp_data}
