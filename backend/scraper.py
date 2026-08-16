@@ -206,46 +206,51 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
-def scrape_leads(niche, region, source, max_results=100, block_large_portals=True, on_progress=None):
-    max_results = min(max_results, 1000)
+def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
+    # Fetch a larger pool of leads (e.g., 3x max_results) to ensure we can hit the exact target after AI filtering
+    target_pool = min(max_results * 5, 500)
+    
     print(f"\n{'='*60}")
-    print(f"[Scraper] INICIO: nicho='{niche}', regiao='{region}', fonte='{source}', max={max_results}")
+    print(f"[Scraper] INICIO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
     print(f"{'='*60}")
 
-    if source == ALL_SOURCES_KEY:
-        all_leads = []
-        source_keys = list(SOURCES.keys())
-        per_source = max(max_results // len(source_keys), 20)
-
-        for src_key in source_keys:
-            if len(all_leads) >= max_results:
-                break
-
-            remaining = max_results - len(all_leads)
-            batch_size = min(per_source, remaining)
-
-            try:
-                batch = _scrape_single_source(
-                    niche, region, src_key, batch_size,
-                    block_large_portals, on_progress
-                )
-                all_leads.extend(batch)
-                print(f"[Scraper] Total acumulado: {len(all_leads)} leads")
-            except Exception as e:
-                print(f"[Scraper] Fonte '{src_key}' falhou, continuando: {e}")
-                continue
-
-        all_leads = deduplicate_leads(all_leads)
-        print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
-        return all_leads[:max_results]
+    all_leads = []
+    
+    # If sources is a string, convert to list
+    if isinstance(sources, str):
+        if sources == ALL_SOURCES_KEY:
+            source_keys = list(SOURCES.keys())
+        else:
+            source_keys = [sources]
     else:
-        leads = _scrape_single_source(
-            niche, region, source, max_results,
-            block_large_portals, on_progress
-        )
-        leads = deduplicate_leads(leads)
-        print(f"[Scraper] FINAL: {len(leads)} leads unicos (apos dedup)")
-        return leads[:max_results]
+        source_keys = sources
+
+    if not source_keys:
+        return []
+
+    per_source = max(target_pool // len(source_keys), 20)
+
+    for src_key in source_keys:
+        if len(all_leads) >= target_pool:
+            break
+
+        remaining = target_pool - len(all_leads)
+        batch_size = min(per_source, remaining)
+
+        try:
+            batch = _scrape_single_source(
+                niche, region, src_key, batch_size,
+                block_large_portals, on_progress
+            )
+            all_leads.extend(batch)
+            print(f"[Scraper] Total acumulado: {len(all_leads)} leads")
+        except Exception as e:
+            print(f"[Scraper] Fonte '{src_key}' falhou, continuando: {e}")
+            continue
+
+    all_leads = deduplicate_leads(all_leads)
+    print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
+    return all_leads[:target_pool]
 
 def get_available_sources():
     return list(SOURCES.keys()) + [ALL_SOURCES_KEY]
