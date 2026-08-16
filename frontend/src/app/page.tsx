@@ -13,6 +13,8 @@ export default function Prospect() {
     minScore, setMinScore,
     sources, setSources,
     status, campaignId,
+    statusMessage, progressPercent,
+    totalApproved, totalDiscarded, totalFound,
     handleStart, handleCancel
   } = useProspect();
 
@@ -146,17 +148,51 @@ export default function Prospect() {
               </div>
             </button>
           ) : isBusy ? (
-            <div className="mt-2 flex flex-col md:flex-row gap-3">
-              <div className="w-full rounded-2xl bg-white/5 border border-white/10 px-6 py-4 flex items-center justify-center gap-3">
-                <Radio className="text-blue-400 animate-pulse" size={20} />
-                <span className="text-sm font-bold text-blue-400 uppercase tracking-wider">Prospecção em Andamento...</span>
+            <div className="mt-2 flex flex-col gap-4">
+              <div className="w-full rounded-2xl bg-white/5 border border-white/10 p-5 flex flex-col gap-3 text-left">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio className="text-blue-400 animate-pulse" size={18} />
+                    <span className="text-sm font-bold text-blue-300 uppercase tracking-wider">Prospecção em Andamento</span>
+                  </div>
+                  <span className="text-xs font-extrabold text-blue-400 bg-blue-500/20 px-3 py-1 rounded-full border border-blue-500/30">
+                    {progressPercent}% Concluído
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full bg-black/50 h-3 rounded-full overflow-hidden border border-white/10">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(59,130,246,0.6)]"
+                    style={{ width: `${Math.max(progressPercent, 5)}%` }}
+                  />
+                </div>
+
+                {/* Progress Details */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center">
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 text-xs">Meta Exata</span>
+                    <span className="text-green-400 font-bold text-base">{totalApproved} / {maxResults}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 text-xs">Avaliados</span>
+                    <span className="text-blue-400 font-bold text-base">{totalApproved + totalDiscarded}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 text-xs">Extraídos</span>
+                    <span className="text-gray-300 font-bold text-base">{totalFound}</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-400 italic text-center mt-1">{statusMessage}</p>
               </div>
+
               <button 
                 onClick={handleCancel}
-                className="w-full md:w-auto rounded-2xl bg-red-500/10 border border-red-500/30 px-6 py-4 flex items-center justify-center gap-2 hover:bg-red-500/20 transition-colors text-red-400"
+                className="w-full rounded-2xl bg-red-500/10 border border-red-500/30 py-3 flex items-center justify-center gap-2 hover:bg-red-500/20 transition-colors text-red-400 font-bold text-sm uppercase tracking-wider"
               >
-                <XCircle size={20} />
-                <span className="text-sm font-bold uppercase tracking-wider">Cancelar</span>
+                <XCircle size={18} />
+                <span>Cancelar Prospecção</span>
               </button>
             </div>
           ) : null}
