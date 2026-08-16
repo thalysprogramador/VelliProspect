@@ -195,15 +195,10 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             # Update stats dynamically after each batch
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
                 
-        # End of loop
-        if approved == 0:
-            print(f"[Backend] Campaign {campaign_id} deleted because 0 leads were approved.")
-            db.delete_campaign(campaign_id)
-        else:
-            db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
+        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed", status_message=f"Concluído com {approved} leads qualificados.")
     except Exception as e:
         print(f"[Backend Error] Scrape task failed: {e}")
-        db.delete_campaign(campaign_id)
+        db.update_campaign_stats(campaign_id, status="error", status_message=f"Erro no processamento: {str(e)[:40]}")
     finally:
         active_campaigns.pop(campaign_id, None)
 
