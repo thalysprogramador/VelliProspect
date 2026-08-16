@@ -111,8 +111,12 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
     active_campaigns[campaign_id] = True
     try:
         leads = scraper.scrape_leads(
-            req.niche, req.region, req.source, 
-            req.max_results, req.block_large_portals
+            niche=req.niche,
+            region=req.region,
+            sources=req.source,
+            max_results=req.max_results,
+            block_large_portals=req.block_large_portals,
+            on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, status_message=f"Extraindo: {p[:20]}...", total_found=n)
         )
         if not leads:
             db.delete_campaign(campaign_id)
@@ -124,7 +128,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
         approved = 0
         discarded = 0
         
-        batch_size = 10
+        batch_size = 30
         for i in range(0, len(leads), batch_size):
             if not active_campaigns.get(campaign_id, True):
                 print(f"[Backend] Campaign {campaign_id} cancelled.")
