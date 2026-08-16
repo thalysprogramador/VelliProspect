@@ -29,6 +29,10 @@ class SettingsRequest(BaseModel):
     key: str
     value: str
 
+class CopilotRequest(BaseModel):
+    message: str
+    history: list = []  # opcional, historico anterior do chat
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "app": "Velli Prospect Backend"}
@@ -58,7 +62,29 @@ def get_setting(key: str):
 @app.post("/api/settings")
 def set_setting(req: SettingsRequest):
     db.set_setting(req.key, req.value)
-    return {"status": "saved"}
+    return {"status": "success"}
+
+@app.post("/api/copilot/chat")
+def copilot_chat_endpoint(req: CopilotRequest):
+    api_key = db.get_setting("gemini_api_key")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Configure a API Key na aba Configuracoes primeiro.")
+    
+    # We fetch leads to give context to Gemini
+    leads = db.get_all_leads()
+    
+    # Include history in the message if it exists so Gemini has context
+    full_message = req.message
+    if req.history:
+        history_text = "\n".join([f"{msg['role'].upper()}: {msg['text']}" for msg in req.history[-5:]]) # ultimas 5 mensagens
+        full_message = f"HISTORICO DA CONVERSA:\n{history_text}\n\nNOVA MENSAGEM DO USUARIO:\n{req.message}"
+        
+    try:
+        reply = ai_evaluator.copilot_chat(full_message, leads, api_key)
+        return {"reply": reply}
+    except Exception as e:
+        print(f"[Copilot Error] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/campaigns")
 def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
