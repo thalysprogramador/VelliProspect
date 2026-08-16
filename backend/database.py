@@ -66,44 +66,61 @@ def _safe_execute(func, default_return=None):
             print("[DB] Switching to local storage")
         return default_return
 
+def _normalize_id(val):
+    if val is None:
+        return val
+    val_str = str(val).strip()
+    if val_str.isdigit():
+        return int(val_str)
+    return val_str
+
 # === Campaigns ===
 def create_campaign(name="", niche="", region="", source="", criteria="", min_score=7, max_results=100):
+    import time
+    # Fits 32-bit integer (max 2147483647) for Postgres int4 compatibility
+    cid = int(time.time() * 10) % 2000000000
     data = {
+        "id": cid,
         "name": name, "niche": niche, "region": region, "source": source,
         "criteria": criteria, "min_score": min_score, "max_results": max_results,
         "status": "running", "created_at": datetime.now().isoformat(),
+        "total_approved": 0, "total_found": 0, "total_discarded": 0,
     }
+
     supabase = get_connection()
     if not _use_local and supabase:
         response = _safe_execute(lambda: supabase.table("campaigns").insert(data).execute())
-        if response and response.data:
-            return response.data[0]["id"]
+        if response and response.data and len(response.data) > 0:
+            res_id = response.data[0].get("id")
+            if res_id:
+                cid = res_id
+                data["id"] = cid
 
     db = _load_local_db()
-    import uuid
-    cid = str(uuid.uuid4())
-    data["id"] = cid
-    data["total_approved"] = 0
-    data["total_found"] = 0
-    data["total_discarded"] = 0
-    db["campaigns"].insert(0, data)
+    db.setdefault("campaigns", []).insert(0, data)
     _save_local_db(db)
     return cid
 
-def update_campaign_stats(campaign_id, total_found=0, total_approved=0, total_discarded=0, status="completed"):
+def update_campaign_stats(campaign_id, total_found=0, total_approved=0, total_discarded=0, status="running", status_message=None):
+    norm_id = _normalize_id(campaign_id)
     update_data = {
         "total_found": total_found, "total_approved": total_approved,
         "total_discarded": total_discarded, "status": status,
         "finished_at": datetime.now().isoformat(),
     }
+    if status_message is not None:
+        update_data["status_message"] = status_message
+
     supabase = get_connection()
     if not _use_local and supabase:
-        _safe_execute(lambda: supabase.table("campaigns").update(update_data).eq("id", campaign_id).execute())
-        return
+        # Strip status_message for Supabase if column is not in schema cache
+        supa_data = {k: v for k, v in update_data.items() if k != "status_message"}
+        _safe_execute(lambda: supabase.table("campaigns").update(supa_data).eq("id", norm_id).execute())
 
+    # Always update local DB too
     db = _load_local_db()
-    for c in db["campaigns"]:
-        if c.get("id") == campaign_id:
+    for c in db.get("campaigns", []):
+        if str(c.get("id")) == str(campaign_id):
             c.update(update_data)
             break
     _save_local_db(db)
@@ -119,34 +136,40 @@ def get_all_campaigns():
     return db.get("campaigns", [])
 
 def get_campaign(campaign_id):
+    norm_id = _normalize_id(campaign_id)
     supabase = get_connection()
     if not _use_local and supabase:
-        response = _safe_execute(lambda: supabase.table("campaigns").select("*").eq("id", campaign_id).execute())
+        response = _safe_execute(lambda: supabase.table("campaigns").select("*").eq("id", norm_id).execute())
         if response and response.data:
             return response.data[0]
 
     db = _load_local_db()
     for c in db.get("campaigns", []):
-        if c.get("id") == campaign_id:
+        if str(c.get("id")) == str(campaign_id):
             return c
     return None
 
 def delete_campaign(campaign_id):
+    norm_id = _normalize_id(campaign_id)
     supabase = get_connection()
     if not _use_local and supabase:
-        _safe_execute(lambda: supabase.table("campaigns").delete().eq("id", campaign_id).execute())
-        _safe_execute(lambda: supabase.table("leads").delete().eq("campaign_id", campaign_id).execute())
+        _safe_execute(lambda: supabase.table("campaigns").delete().eq("id", norm_id).execute())
+        _safe_execute(lambda: supabase.table("leads").delete().eq("campaign_id", norm_id).execute())
         return
 
     db = _load_local_db()
-    db["campaigns"] = [c for c in db["campaigns"] if c.get("id") != campaign_id]
-    db["leads"] = [l for l in db["leads"] if l.get("campaign_id") != campaign_id]
+    db["campaigns"] = [c for c in db.get("campaigns", []) if str(c.get("id")) != str(campaign_id)]
+    db["leads"] = [l for l in db.get("leads", []) if str(l.get("campaign_id")) != str(campaign_id)]
     _save_local_db(db)
 
 # === Leads ===
 def insert_lead(campaign_id, lead_data):
+    norm_cid = _normalize_id(campaign_id)
+    import time, random
+    lead_id = (int(time.time() * 100) + random.randint(1, 9999)) % 2000000000
     data = {
-        "campaign_id": campaign_id,
+        "id": lead_id,
+        "campaign_id": norm_cid,
         "name": lead_data.get("name", ""),
         "link": lead_data.get("link", ""),
         "description": lead_data.get("description", ""),
@@ -164,11 +187,8 @@ def insert_lead(campaign_id, lead_data):
     supabase = get_connection()
     if not _use_local and supabase:
         _safe_execute(lambda: supabase.table("leads").insert(data).execute())
-        return
 
     db = _load_local_db()
-    import uuid
-    data["id"] = str(uuid.uuid4())
     db["leads"].insert(0, data)
     _save_local_db(db)
 
@@ -186,14 +206,15 @@ def update_lead_status(lead_id, status):
     _save_local_db(db)
 
 def get_leads_by_campaign(campaign_id):
+    norm_cid = _normalize_id(campaign_id)
     supabase = get_connection()
     if not _use_local and supabase:
-        response = _safe_execute(lambda: supabase.table("leads").select("*").eq("campaign_id", campaign_id).order("score", desc=True).execute())
+        response = _safe_execute(lambda: supabase.table("leads").select("*").eq("campaign_id", norm_cid).order("score", desc=True).execute())
         if response and response.data:
             return response.data
 
     db = _load_local_db()
-    return sorted([l for l in db.get("leads", []) if l.get("campaign_id") == campaign_id], key=lambda x: x.get("score", 0), reverse=True)
+    return sorted([l for l in db.get("leads", []) if str(l.get("campaign_id")) == str(campaign_id)], key=lambda x: x.get("score", 0), reverse=True)
 
 def get_all_leads():
     supabase = get_connection()
