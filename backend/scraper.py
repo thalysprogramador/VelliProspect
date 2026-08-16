@@ -160,6 +160,29 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
             if not skip_domain and is_blocked_domain(url, block_large_portals):
                 continue
 
+            # --- FILTRO ESPECIFICO POR FONTE ---
+            url_lower = url.lower()
+            if source_key == "instagram":
+                # Must be a direct profile link, not a post/reel
+                if "instagram.com" not in url_lower:
+                    continue
+                if any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/explore/", "/stories/", "/tv/", "/tags/"]):
+                    continue
+                # If there are query parameters like ?igshid=... remove them for cleanliness
+                url = url.split("?")[0]
+            
+            elif source_key == "linkedin":
+                if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
+                    continue
+            
+            elif source_key == "facebook":
+                if "facebook.com/" not in url_lower:
+                    continue
+                    
+            elif source_key == "maps_insta":
+                if "instagram.com" in url_lower and any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/explore/"]):
+                    continue
+
             combined_text = f"{snippet} {title} {url}"
             has_phone, has_email = extract_contact_info(combined_text)
 
@@ -189,14 +212,12 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 def scrape_leads(niche, region, sources, max_results=100, block_large_portals=True, on_progress=None):
     # Target pool size optimized to avoid long idle times (e.g. 2x requested amount, max 80)
     target_pool = max(min(max_results * 2, 80), 20)
     
     print(f"\n{'='*60}")
-    print(f"[Scraper] INICIO ULTRARRAPIDO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
+    print(f"[Scraper] INICIO OTIMIZADO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
     print(f"{'='*60}")
 
     all_leads = []
@@ -214,20 +235,26 @@ def scrape_leads(niche, region, sources, max_results=100, block_large_portals=Tr
 
     per_source = max(target_pool // len(source_keys), 15)
 
-    # Parallel scraping across sources
-    with ThreadPoolExecutor(max_workers=min(len(source_keys), 4)) as executor:
-        future_to_source = {
-            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress): src_key
-            for src_key in source_keys
-        }
-        for future in as_completed(future_to_source):
-            src_key = future_to_source[future]
-            try:
-                batch = future.result()
-                all_leads.extend(batch)
-                print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
-            except Exception as e:
-                print(f"[Scraper] Fonte '{src_key}' falhou: {e}")
+    # Sequential search to avoid DDGS IP-Ban/Rate Limits (429) that happen with ThreadPoolExecutor
+    for src_key in source_keys:
+        if len(all_leads) >= target_pool:
+            break
+
+        remaining = target_pool - len(all_leads)
+        batch_size = min(per_source, remaining)
+
+        try:
+            batch = _scrape_single_source(
+                niche, region, src_key, batch_size,
+                block_large_portals, on_progress
+            )
+            all_leads.extend(batch)
+            print(f"[Scraper] Total acumulado: {len(all_leads)} leads")
+        except Exception as e:
+            print(f"[Scraper] Fonte '{src_key}' falhou, continuando: {e}")
+        
+        # Small delay between source queries to prevent rate limits
+        time.sleep(1)
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
