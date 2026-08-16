@@ -119,7 +119,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, status_message=f"Extraindo: {p[:20]}...", total_found=n)
         )
         if not leads:
-            db.delete_campaign(campaign_id)
+            db.update_campaign_stats(campaign_id, status="error", status_message="Nenhum contato encontrado pelas fontes (Tente mudar o nicho/regiao).")
             return
             
         db.update_campaign_stats(campaign_id, total_found=len(leads))
