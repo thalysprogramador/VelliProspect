@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, Send, MessageSquare, Plus, Menu, X } from "lucide-react";
+import { Sparkles, Send, MessageSquare, Plus, Menu, X, Trash2 } from "lucide-react";
 
 type Message = {
   role: "user" | "assistant";
@@ -67,6 +67,23 @@ export default function Copilot() {
     setIsSidebarOpen(false); // Close mobile sidebar if open
   };
 
+  const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessions(prev => {
+      const filtered = prev.filter(s => s.id !== id);
+      if (currentSessionId === id) {
+        if (filtered.length > 0) {
+          setCurrentSessionId(filtered[0].id);
+        } else {
+          // Instead of calling createNewSession directly which modifies state again,
+          // we just clear the currentSessionId, and the useEffect will handle it.
+          setCurrentSessionId(null);
+        }
+      }
+      return filtered;
+    });
+  };
+
   const currentSession = sessions.find(s => s.id === currentSessionId);
   const messages = currentSession?.messages || [];
 
@@ -103,7 +120,7 @@ export default function Copilot() {
       });
 
       if (!res.ok) {
-        throw new Error("Erro na comunicação com a API");
+        throw new Error(`Erro na comunicação com a API (Status: ${res.status})`);
       }
 
       const data = await res.json();
@@ -116,9 +133,10 @@ export default function Copilot() {
       }));
 
     } catch(e: any) {
+      console.error("[Copilot Error]", e);
       setSessions(prev => prev.map(s => {
         if (s.id === currentSessionId) {
-          return { ...s, messages: [...s.messages, { role: "assistant", text: "Desculpe, ocorreu um erro ao conectar com o servidor. Tente novamente." }] };
+          return { ...s, messages: [...s.messages, { role: "assistant", text: `Erro: ${e.message || "Falha na conexão"}. Tente novamente.` }] };
         }
         return s;
       }));
@@ -159,18 +177,27 @@ export default function Copilot() {
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">Histórico</div>
           {sessions.map(session => (
-            <button
+            <div 
               key={session.id}
               onClick={() => { setCurrentSessionId(session.id); setIsSidebarOpen(false); }}
-              className={`w-full text-left flex items-center gap-3 p-3 rounded-xl transition-all ${
+              className={`w-full text-left flex items-center justify-between gap-3 p-3 rounded-xl transition-all cursor-pointer ${
                 currentSessionId === session.id 
                   ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" 
                   : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
               }`}
             >
-              <MessageSquare size={16} className="shrink-0" />
-              <span className="truncate text-sm">{session.title}</span>
-            </button>
+              <div className="flex items-center gap-3 overflow-hidden">
+                <MessageSquare size={16} className="shrink-0" />
+                <span className="truncate text-sm">{session.title}</span>
+              </div>
+              <button 
+                onClick={(e) => deleteSession(session.id, e)}
+                className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                title="Excluir conversa"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           ))}
         </div>
       </div>
