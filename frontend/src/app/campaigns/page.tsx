@@ -53,15 +53,15 @@ export default function Campaigns() {
   if (selectedCid) {
     const camp = campaigns.find(c => c.id === selectedCid);
     return (
-      <div className="p-10 lg:p-16 max-w-7xl mx-auto animate-in fade-in zoom-in-95 duration-500">
-        <div className="flex items-center justify-between mb-12">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setSelectedCid(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors">
+      <div className="p-4 md:p-10 lg:p-16 max-w-7xl mx-auto animate-in fade-in zoom-in-95 duration-500">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-4">
+          <div className="flex items-center gap-4 md:gap-6">
+            <button onClick={() => setSelectedCid(null)} className="p-2 md:p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors">
               <ChevronLeft size={24} />
             </button>
-            <h1 className="text-4xl font-bold">{camp?.name}</h1>
+            <h1 className="text-2xl md:text-4xl font-bold">{camp?.name}</h1>
           </div>
-          <button onClick={handleExport} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(0,122,255,0.3)]">
+          <button onClick={handleExport} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(0,122,255,0.3)]">
             <Download size={18} /> Exportar Excel
           </button>
         </div>
@@ -70,18 +70,18 @@ export default function Campaigns() {
           {loading ? (
             <div className="text-center py-20 text-gray-500">Carregando leads...</div>
           ) : leads.map(l => (
-            <div key={l.id} className="glass-panel p-6 rounded-3xl flex gap-6 items-start hover:border-white/20 transition-all">
-              <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl ${l.score >= 8 ? "bg-green-500/20 text-green-400" : l.score >= 5 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400"}`}>
+            <div key={l.id} className="glass-panel p-4 md:p-6 rounded-3xl flex flex-col sm:flex-row gap-4 md:gap-6 items-start hover:border-white/20 transition-all">
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl shrink-0 ${l.score >= 8 ? "bg-green-500/20 text-green-400" : l.score >= 5 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400"}`}>
                 {l.score}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 w-full">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-xl font-bold flex items-center gap-3">
-                      {l.name}
-                      {l.link && <a href={l.link} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300"><ExternalLink size={16} /></a>}
+                  <div className="w-full">
+                    <h3 className="text-lg md:text-xl font-bold flex items-center gap-2 flex-wrap">
+                      <span className="break-words">{l.name}</span>
+                      {l.link && <a href={l.link} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 shrink-0"><ExternalLink size={16} /></a>}
                     </h3>
-                    <p className="text-gray-400 text-sm mt-1 mb-3">{l.description}</p>
+                    <p className="text-gray-400 text-xs md:text-sm mt-1 mb-3 break-words">{l.description}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-4">
@@ -97,19 +97,19 @@ export default function Campaigns() {
   }
 
   return (
-    <div className="p-10 lg:p-16 max-w-7xl mx-auto">
-      <h1 className="text-4xl font-bold mb-4">Campanhas</h1>
-      <p className="text-gray-400 mb-12">Gerencie e exporte seus leads estruturados com IA.</p>
+    <div className="p-4 md:p-10 lg:p-16 max-w-7xl mx-auto">
+      <h1 className="text-3xl md:text-4xl font-bold mb-2 md:mb-4">Campanhas</h1>
+      <p className="text-sm md:text-base text-gray-400 mb-8 md:mb-12">Gerencie e exporte seus leads estruturados com IA.</p>
       
       {loading ? (
         <div className="text-center py-20 text-gray-500">Carregando campanhas...</div>
       ) : (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {campaigns.map(c => (
-            <div key={c.id} onClick={() => loadLeads(c.id)} className="glass-panel p-8 rounded-3xl cursor-pointer hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-white/20 transition-all group relative">
-              <div className="flex justify-between items-start mb-6">
-                <h3 className="text-xl font-bold group-hover:text-blue-400 transition-colors">{c.name}</h3>
-                <div className="flex items-center gap-3">
+            <div key={c.id} onClick={() => loadLeads(c.id)} className="glass-panel p-6 md:p-8 rounded-3xl cursor-pointer hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:border-white/20 transition-all group relative">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 gap-2">
+                <h3 className="text-lg md:text-xl font-bold group-hover:text-blue-400 transition-colors break-words w-full sm:w-auto">{c.name}</h3>
+                <div className="flex items-center gap-2 md:gap-3 shrink-0">
                   <span className={`text-xs font-bold px-3 py-1 rounded-full ${c.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
                     {c.status === "completed" ? "Concluída" : "Em Andamento"}
                   </span>
