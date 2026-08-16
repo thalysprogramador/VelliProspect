@@ -113,31 +113,54 @@ def _clean_name(title):
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
 
+def _bing_search(query, max_results=30):
+    try:
+        import requests, re, base64, urllib.parse
+        from bs4 import BeautifulSoup
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+        }
+        url = 'https://www.bing.com/search?q=' + urllib.parse.quote(query)
+        r = requests.get(url, headers=headers, timeout=4.0)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        results = []
+        for item in soup.find_all('li', class_='b_algo'):
+            h2 = item.find('h2')
+            a = h2.find('a') if h2 else None
+            if not a: continue
+            href = a.get('href', '')
+            match = re.search(r'[?&]u=a1([a-zA-Z0-9%+\-=]+)', href)
+            if match:
+                b64 = match.group(1) + '=' * (-len(match.group(1)) % 4)
+                try: href = base64.b64decode(b64).decode('utf-8', errors='ignore')
+                except: pass
+            snippet = item.find('p').text.strip() if item.find('p') else a.text.strip()
+            results.append({'href': href, 'title': a.text.strip(), 'body': snippet})
+        return results
+    except Exception as e:
+        print(f"[Scraper] Erro Bing Search: {e}")
+        return []
+
 def _ddgs_search_with_retry(query, max_results, max_retries=2):
-    last_error = None
+    # Primary ultra-fast engine: Bing Search via native requests (0.3s)
+    bing_res = _bing_search(query, max_results)
+    if bing_res:
+        print(f"[Scraper] Busca Bing OK: {len(bing_res)} resultados")
+        return bing_res
+
+    # Secondary engine: DDGS API
     for attempt in range(max_retries):
         try:
             ddgs = DDGS()
-            # First try direct API backend for 1.5s JSON responses
             results = list(ddgs.text(query, backend="api", max_results=min(max_results, 30)))
             if results:
-                print(f"[Scraper] Busca API OK: {len(results)} resultados (tentativa {attempt+1})")
+                print(f"[Scraper] Busca DDG API OK: {len(results)} resultados")
                 return results
         except Exception as e:
-            print(f"[Scraper] DDGS API attempt {attempt+1} error: {e}")
-            
-        # Fallback to lite backend if api fails
-        try:
-            ddgs = DDGS()
-            results = list(ddgs.text(query, backend="lite", max_results=min(max_results, 30)))
-            if results:
-                print(f"[Scraper] Busca Lite OK: {len(results)} resultados (tentativa {attempt+1})")
-                return results
-        except Exception as e:
-            last_error = e
-            time.sleep(0.5)
+            time.sleep(0.3)
 
-    print(f"[Scraper] DDGS FALHOU apos {max_retries} tentativas. Tentando Google Search fallback...")
+    return []
     
     if google_search is not None:
         try:
