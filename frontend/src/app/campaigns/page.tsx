@@ -38,6 +38,7 @@ export default function Campaigns() {
       "Telefone?": l.has_phone ? "Sim" : "Nao",
       "Email?": l.has_email ? "Sim" : "Nao",
       "Quem Atende": l.decision_maker || "",
+      "Fonte": l.source || "",
       "Tags de Perfil": (l.tags || []).join(", "),
       "Analise da IA": l.reason || "",
       "Link de Contato": l.link || "",
@@ -85,6 +86,11 @@ export default function Campaigns() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-4">
+                  {l.source && (
+                    <span className="bg-blue-500/20 text-blue-300 px-3 py-1 text-xs font-bold rounded-full border border-blue-500/30 uppercase">
+                      {l.source}
+                    </span>
+                  )}
                   {(l.tags || []).map((t: string) => <span key={t} className="bg-white/5 text-gray-300 px-3 py-1 text-xs font-semibold rounded-full">{t}</span>)}
                 </div>
                 <p className="text-sm italic text-gray-500">&quot;{l.reason}&quot;</p>
