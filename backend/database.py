@@ -10,8 +10,10 @@ from datetime import datetime
 SUPABASE_URL = "https://emsejcohbjtymxtahnyb.supabase.co"
 SUPABASE_KEY = "sb_publishable_r4Q2eU0K5gL6u6YoeuXCEw_fbJZfFnz"
 
+import tempfile
+
 # === Fallback Local ===
-LOCAL_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data.json")
+LOCAL_DB_PATH = os.path.join(tempfile.gettempdir(), "velli_local_data.json")
 
 # Gemini API Key default (pre-salva)
 DEFAULT_GEMINI_KEY = "AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"
