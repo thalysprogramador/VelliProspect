@@ -1,117 +1,30 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Search, Loader2, CheckCircle2, XCircle, Radio } from "lucide-react";
-
-type ProspectStatus = "idle" | "starting" | "scraping" | "evaluating" | "completed" | "error";
+import { Search, Radio, XCircle } from "lucide-react";
+import { useProspect } from "@/context/ProspectContext";
 
 export default function Prospect() {
-  const [niche, setNiche] = useState("");
-  const [region, setRegion] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [maxResults, setMaxResults] = useState(50);
-  const [minScore, setMinScore] = useState(7);
-  const [source, setSource] = useState("maps");
-  const [status, setStatus] = useState<ProspectStatus>("idle");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [campaignId, setCampaignId] = useState<string | null>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const {
+    niche, setNiche,
+    region, setRegion,
+    prompt, setPrompt,
+    maxResults, setMaxResults,
+    minScore, setMinScore,
+    sources, setSources,
+    status, campaignId,
+    handleStart, handleCancel
+  } = useProspect();
 
-  // Poll campaign status while active
-  useEffect(() => {
-    if (!campaignId || status === "completed" || status === "error" || status === "idle") {
-      if (pollRef.current) clearInterval(pollRef.current);
-      return;
-    }
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${campaignId}`);
-        if (r.ok) {
-          const data = await r.json();
-          if (data.status === "completed") {
-            setStatus("completed");
-            setStatusMessage(`Prospecção finalizada! ${data.total_approved || 0} leads qualificados encontrados.`);
-            if (pollRef.current) clearInterval(pollRef.current);
-          } else {
-            setStatus("scraping");
-            const found = data.total_found || 0;
-            const approved = data.total_approved || 0;
-            setStatusMessage(`Fazendo varredura... ${found} encontrados, ${approved} aprovados pela IA`);
-          }
-        }
-      } catch {
-        // Connection error, keep trying
-      }
-    }, 5000);
-
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [campaignId, status]);
-
-  const handleStart = async () => {
-    if (!niche || !region) {
-      setStatus("error");
-      setStatusMessage("Preencha o nicho e a região antes de iniciar.");
-      return;
-    }
-    
-    setStatus("starting");
-    setStatusMessage("Conectando ao servidor de prospecção...");
-    
-    try {
-      const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          niche, region, criteria: prompt, 
-          max_results: maxResults, min_score: minScore, 
-          source, block_large_portals: true 
-        })
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setCampaignId(data.campaign?.id || null);
-        setStatus("scraping");
-        setStatusMessage("Fazendo varredura... buscando empresas na região informada...");
-      } else {
-        setStatus("error");
-        setStatusMessage("Erro ao iniciar a prospecção. Tente novamente.");
-      }
-    } catch {
-      setStatus("error");
-      setStatusMessage("Falha na conexão com o servidor. Verifique sua internet.");
+  const toggleSource = (src: string) => {
+    if (sources.includes(src)) {
+      setSources(sources.filter(s => s !== src));
+    } else {
+      setSources([...sources, src]);
     }
   };
 
-  const handleCancel = async () => {
-    if (!campaignId) return;
-    try {
-      await fetch(`https://velli-prospect.onrender.com/api/campaigns/${campaignId}/cancel`, { method: "POST" });
-    } catch {}
-    setStatus("idle");
-    setStatusMessage("");
-    setCampaignId(null);
-  };
-
-  const handleReset = () => {
-    setStatus("idle");
-    setStatusMessage("");
-    setCampaignId(null);
-    setNiche("");
-    setRegion("");
-    setPrompt("");
-  };
-
-  const statusColors: Record<ProspectStatus, string> = {
-    idle: "",
-    starting: "text-yellow-400",
-    scraping: "text-blue-400",
-    evaluating: "text-purple-400",
-    completed: "text-green-400",
-    error: "text-red-400",
-  };
+  const isBusy = status === "starting" || status === "scraping" || status === "evaluating";
 
   return (
     <div className="min-h-screen p-4 md:p-10 lg:p-20 flex flex-col items-center justify-center relative overflow-hidden">
@@ -138,7 +51,7 @@ export default function Prospect() {
               placeholder="Ex: Advogados, Clínicas de Estética"
               value={niche}
               onChange={e => setNiche(e.target.value)}
-              disabled={status === "scraping" || status === "starting"}
+              disabled={isBusy}
               className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600 disabled:opacity-50"
             />
           </div>
@@ -150,24 +63,39 @@ export default function Prospect() {
               placeholder="Ex: São Paulo, Brasilia"
               value={region}
               onChange={e => setRegion(e.target.value)}
-              disabled={status === "scraping" || status === "starting"}
+              disabled={isBusy}
               className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600 disabled:opacity-50"
             />
           </div>
 
-          <div className="flex flex-col gap-2 text-left">
-            <label className="text-sm font-semibold text-gray-300 ml-2">Onde procurar?</label>
-            <select 
-              value={source}
-              onChange={e => setSource(e.target.value)}
-              disabled={status === "scraping" || status === "starting"}
-              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white disabled:opacity-50"
-            >
-              <option value="maps">Google Maps (Recomendado para Negócios Locais)</option>
-              <option value="instagram">Instagram</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="maps_insta">Google Maps + Instagram</option>
-            </select>
+          <div className="flex flex-col gap-3 text-left">
+            <label className="text-sm font-semibold text-gray-300 ml-2">Fontes de Pesquisa</label>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { id: "maps", label: "Google Maps" },
+                { id: "instagram", label: "Instagram" },
+                { id: "linkedin", label: "LinkedIn" },
+                { id: "facebook", label: "Facebook" }
+              ].map(src => (
+                <label 
+                  key={src.id} 
+                  className={`flex items-center gap-2 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                    sources.includes(src.id) 
+                      ? "bg-blue-500/20 border-blue-500/50 text-blue-300" 
+                      : "bg-black/40 border-white/10 text-gray-400 hover:bg-white/5"
+                  } ${isBusy ? "opacity-50 pointer-events-none" : ""}`}
+                >
+                  <input 
+                    type="checkbox" 
+                    className="hidden"
+                    checked={sources.includes(src.id)}
+                    onChange={() => toggleSource(src.id)}
+                    disabled={isBusy}
+                  />
+                  <span className="text-sm font-medium">{src.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 text-left">
@@ -176,19 +104,19 @@ export default function Prospect() {
               placeholder="Ex: Buscar empresas com site ruim, sem foto de capa no maps..."
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              disabled={status === "scraping" || status === "starting"}
+              disabled={isBusy}
               className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white placeholder:text-gray-600 min-h-[100px] resize-y disabled:opacity-50"
             />
           </div>
 
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex flex-col gap-2 text-left w-full md:w-1/2">
-              <label className="text-sm font-semibold text-gray-300 ml-2">Máximo de Resultados</label>
+              <label className="text-sm font-semibold text-gray-300 ml-2">Meta de Leads (Qtde Exata)</label>
               <input 
                 type="number" 
                 value={maxResults}
                 onChange={e => setMaxResults(Number(e.target.value))}
-                disabled={status === "scraping" || status === "starting"}
+                disabled={isBusy}
                 className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white disabled:opacity-50"
               />
             </div>
@@ -198,46 +126,17 @@ export default function Prospect() {
                 type="number" 
                 value={minScore}
                 onChange={e => setMinScore(Number(e.target.value))}
-                disabled={status === "scraping" || status === "starting"}
+                disabled={isBusy}
                 className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all text-white disabled:opacity-50"
                 min={0} max={10}
               />
             </div>
           </div>
 
-          {/* Status Panel - shows during and after prospection */}
-          {status !== "idle" && (
-            <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
-              status === "completed" ? "bg-green-500/10 border-green-500/30" :
-              status === "error" ? "bg-red-500/10 border-red-500/30" :
-              "bg-blue-500/10 border-blue-500/30"
-            } animate-in fade-in duration-500`}>
-              {(status === "starting" || status === "scraping" || status === "evaluating") && (
-                <Loader2 className="animate-spin text-blue-400 flex-shrink-0" size={20} />
-              )}
-              {status === "completed" && <CheckCircle2 className="text-green-400 flex-shrink-0" size={20} />}
-              {status === "error" && <XCircle className="text-red-400 flex-shrink-0" size={20} />}
-              <div className="flex-1">
-                <p className={`text-sm font-semibold ${statusColors[status]}`}>{statusMessage}</p>
-                {status === "scraping" && (
-                  <p className="text-xs text-gray-500 mt-1">Acompanhe em tempo real na aba Campanhas</p>
-                )}
-              </div>
-              {(status === "completed" || status === "error") && (
-                <button 
-                  onClick={handleReset}
-                  className="text-xs font-semibold text-gray-400 hover:text-white border border-white/10 px-3 py-1.5 rounded-xl transition-all hover:bg-white/5"
-                >
-                  Nova Prospecção
-                </button>
-              )}
-            </div>
-          )}
-
           {/* Button */}
-          {status === "idle" || status === "error" ? (
+          {status === "idle" || status === "error" || status === "completed" ? (
             <button 
-              onClick={handleStart}
+              onClick={status === "completed" ? handleStart : handleStart}
               className="mt-2 relative w-full overflow-hidden rounded-2xl p-[1px] group"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl opacity-70 group-hover:opacity-100 transition-opacity duration-300" />
@@ -246,7 +145,7 @@ export default function Prospect() {
                 <span>INICIAR PROSPECÇÃO</span>
               </div>
             </button>
-          ) : status === "scraping" || status === "starting" || status === "evaluating" ? (
+          ) : isBusy ? (
             <div className="mt-2 flex flex-col md:flex-row gap-3">
               <div className="w-full rounded-2xl bg-white/5 border border-white/10 px-6 py-4 flex items-center justify-center gap-3">
                 <Radio className="text-blue-400 animate-pulse" size={20} />
