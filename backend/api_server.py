@@ -204,7 +204,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             # Update stats dynamically after each batch
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
                 
-        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed", status_message=f"Concluído com {approved} leads qualificados.")
+        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
     except Exception as e:
         print(f"[Backend Error] Scrape task failed: {e}")
         db.update_campaign_stats(campaign_id, status="error")
