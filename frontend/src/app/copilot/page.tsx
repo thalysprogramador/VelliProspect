@@ -93,7 +93,7 @@ export default function Copilot() {
       // Get the updated history to send
       const historyToSend = currentSession?.messages || [];
       
-      const res = await fetch("https://velli-prospect-backend.onrender.com/api/copilot/chat", {
+      const res = await fetch("https://velli-prospect.onrender.com/api/copilot/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
