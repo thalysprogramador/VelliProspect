@@ -69,6 +69,11 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
             setProgressPercent(100);
             setStatusMessage(`Prospecção finalizada! ${data.total_approved || 0} leads qualificados encontrados.`);
             if (pollRef.current) clearInterval(pollRef.current);
+          } else if (data.status === "error") {
+            setStatus("error");
+            setStatusMessage(data.status_message || "Ocorreu um erro durante a prospecção.");
+            setProgressPercent(0);
+            if (pollRef.current) clearInterval(pollRef.current);
           } else {
             setStatus("scraping");
             const found = data.total_found || 0;
@@ -107,6 +112,10 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
     
     setStatus("starting");
     setStatusMessage("Conectando ao servidor de prospecção...");
+    setTotalFound(0);
+    setTotalApproved(0);
+    setTotalDiscarded(0);
+    setProgressPercent(0);
     
     try {
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
@@ -115,26 +124,17 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ 
           niche, region, criteria: prompt, 
           max_results: maxResults, min_score: minScore, 
-          source: sources, // now passing array
+          source: sources,
           block_large_portals: true 
         })
       });
       
       if (res.ok) {
         const data = await res.json();
-        const cid = data.campaign?.id || null;
+        const cid = data.campaign?.id ? String(data.campaign.id) : null;
         setCampaignId(cid);
         
         if (data.status === "completed" && cid) {
-          try {
-            const leadsRes = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${cid}/leads`);
-            if (leadsRes.ok) {
-              const leadsData = await leadsRes.json();
-              setLeads(leadsData);
-            }
-          } catch (e) {
-            console.error("Error fetching instant leads", e);
-          }
           setStatus("completed");
           setTotalFound(data.campaign?.total_found || 0);
           setTotalApproved(data.campaign?.total_approved || 0);
@@ -143,10 +143,6 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
           setStatusMessage(data.campaign?.status_message || "Prospecção concluída com sucesso!");
         } else {
           setStatus("scraping");
-          setTotalFound(0);
-          setTotalApproved(0);
-          setTotalDiscarded(0);
-          setProgressPercent(0);
           setStatusMessage("Fazendo varredura... buscando empresas na região informada...");
         }
       } else {
@@ -173,7 +169,6 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
     setStatus("idle");
     setStatusMessage("");
     setCampaignId(null);
-    // NÃO limpa mais o niche, region, prompt, sources, maxResults, minScore (Persistência)
   };
 
   return (
