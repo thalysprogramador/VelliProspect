@@ -332,7 +332,7 @@ Voce esta dentro do software Velli Prospect e tem acesso a base de leads do usua
 
 Responda de forma objetiva, pratica e util. Use emojis com moderacao. Seja como um consultor de vendas senior conversando com o usuario."""
 
-        response = _call_gemini_with_retry(client, prompt, model="gemini-1.5-flash-latest")
+        response = _call_gemini_with_retry(client, prompt, model="gemini-2.5-flash")
         return response.text.strip()
 
     except Exception as e:
