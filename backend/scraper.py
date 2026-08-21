@@ -27,7 +27,7 @@ BLOCKED_DOMAINS = [
 
 SOURCES = {
     "instagram": {
-        "query_template": "{niche} {region} instagram perfil contato",
+        "query_template": '"{niche}" "{region}" instagram',
         "skip_domain_filter": True,
     },
     "maps": {
@@ -35,7 +35,7 @@ SOURCES = {
         "skip_domain_filter": False,
     },
     "linkedin": {
-        "query_template": "{niche} {region} linkedin perfil empresa contato",
+        "query_template": "{niche} {region} (site:linkedin.com/in/ OR site:linkedin.com/company/)",
         "skip_domain_filter": True,
     },
     "maps_insta": {
@@ -43,7 +43,7 @@ SOURCES = {
         "skip_domain_filter": True,
     },
     "facebook": {
-        "query_template": "{niche} {region} facebook pagina contato",
+        "query_template": "{niche} {region} site:facebook.com",
         "skip_domain_filter": True,
     },
     "Sites Proprios": {
@@ -140,25 +140,28 @@ def _bing_search(query, max_results=30):
         return []
 
 def _ddgs_search_with_retry(query, max_results, max_retries=2):
-    # Primary ultra-fast engine: Bing Search via native requests (0.3s)
+    # Primary ultra-fast engine: DuckDuckGo Search (DDGS)
+    try:
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=max_results):
+                results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
+        if results:
+            print(f"[Scraper] Busca DDGS OK: {len(results)} resultados")
+            return results
+    except Exception as e:
+        print(f"[Scraper] DDGS falhou ({e}), tentando Bing Fallback...")
+
+    # Fallback engine: Bing Search via native requests
     bing_res = _bing_search(query, max_results)
     if bing_res:
         print(f"[Scraper] Busca Bing OK: {len(bing_res)} resultados")
         return bing_res
 
-    return []
-    
-    if google_search is not None:
-        try:
-            results = []
-            for url in google_search(query, num_results=max_results, lang="pt"):
-                results.append({"href": url, "title": "Google Result", "body": "Scraped via Google Search Fallback"})
-            if results:
-                print(f"[Scraper] Google Fallback OK: {len(results)} resultados")
-                return results
-        except Exception as ge:
-            print(f"[Scraper] Google Fallback falhou: {ge}")
-            
     return []
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
@@ -211,6 +214,16 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
 
             combined_text = f"{snippet} {title} {url}"
             has_phone, has_email = extract_contact_info(combined_text)
+
+            # Fix generic titles from DDGS
+            if title.lower() in ["link to instagram.com", "instagram", ""] and "instagram.com/" in url_lower:
+                try:
+                    from urllib.parse import urlparse
+                    path_parts = [p for p in urlparse(url).path.split("/") if p]
+                    if path_parts:
+                        title = path_parts[0].replace("_", " ").title()
+                except:
+                    pass
 
             name = _clean_name(title)
 
@@ -319,82 +332,8 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
 
     all_leads = deduplicate_leads(all_leads)
     
-    # If scrapers returned 0 or few leads due to cloud IP blocks, supplement with verified niche targets
-    if len(all_leads) < max_results:
-        print(f"[Scraper] Suplementando com alvos verificados para '{niche}' em '{region}'...")
-        supplement = _generate_niche_leads(niche, region, max_results - len(all_leads), sources)
-        all_leads.extend(supplement)
-        all_leads = deduplicate_leads(all_leads)
-
     print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
     return all_leads[:target_pool]
 
-def _generate_niche_leads(niche, region, count, sources):
-    import random
-    clean_niche = niche.strip().lower()
-    clean_region = region.strip().lower()
-    
-    niche_slug = re.sub(r'[^a-z0-9]', '', clean_niche)
-    region_slug = re.sub(r'[^a-z0-9]', '', clean_region)
-    
-    leads = []
-    
-    # Real profile templates customized by niche
-    if "advogad" in clean_niche or "direito" in clean_niche or "jurid" in clean_niche:
-        profiles_data = [
-            ("Dra. Amanda Oliveira | Advocacia Cível & Trabalhista", f"advocacia_{region_slug}_oficial", f"⚖️ Especialista em Direito Trabalhista e Cível em {region.title()}. +10 anos de experiência em defesa de PMEs. 📍 Centro Executivo. 📲 WhatsApp: +55 (11) 98765-4321"),
-            (f"Silva & Martins Advogados Associados {region.title()}", f"silvamartins_adv_{region_slug}", f"🏢 Escritório de Advocacia Empresarial, Tributária e Contratual em {region.title()}. Soluções jurídicas para empresas. 📧 contato@silvamartinsadv.com.br"),
-            ("Dr. Marcelo Mendes | Direito de Família & Sucessões", f"dr.marcelo.direito.{region_slug}", f"💍 Advocacia Especializada em Inventários, Divórcios e Guarda de Filhos em {region.title()}. 📲 Direct ou Whats: +55 (11) 99123-8877"),
-            ("Dr. Paulo Ribeiro | Consultoria Tributária & Fiscal", f"paulo_tributario_{region_slug}", f"📊 Defesa Fiscal e Planejamento Tributário para Empresas na Grande {region.title()}. OAB Regular. ✉️ paulo@ribeirotributario.adv.br"),
-            (f"Rodriguez & Santos Advocacia Imobiliária {region.title()}", f"rodriguez_advocacia_{region_slug}", f"🏠 Especialistas em Direito Imobiliário, Regularização de Imóveis e Contratos em {region.title()}. ☎️ Contato: +55 (11) 3214-5500."),
-            ("Dra. Beatriz Costa | Advocacia Previdenciária & INSS", f"dra_beatriz_inss_{region_slug}", f"📋 Planejamento de Aposentadoria, Auxílios e Revisão de Benefícios do INSS em {region.title()}. 📱 WhatsApp Direto.")
-        ]
-    elif "dentist" in clean_niche or "odont" in clean_niche:
-        profiles_data = [
-            (f"Dra. Camila Santos | Ortodontia & Estética Dental {region.title()}", f"dra_camila_orto_{region_slug}", f"🦷 Reabilitação Oral, Lentes de Contato Dental e Invisalign em {region.title()}. 📍 Atendimento Executivo. 📲 Agendamento: +55 (11) 99876-5432"),
-            (f"Instituto Odontológico {region.title()}", f"instituto_odonto_{region_slug}", f"✨ Implantes Dentários, Endodontia e Odontopediatria. Equipe de especialistas em {region.title()}. 📞 Tel: +55 (11) 3344-5566."),
-            ("Dr. Rafael Lima | Implantodontia & Cirurgia Oral", f"dr_rafaellima_implantodonto", f"👨‍⚕️ Cirurgião Dentista especialista em Implantes e Enxerto Ósseo em {region.title()}. Marcação via WhatsApp.")
-        ]
-    elif "medico" in clean_niche or "clinica" in clean_niche or "saude" in clean_niche:
-        profiles_data = [
-            (f"Dra. Juliana Paes | Dermatologia & Estética Avançada {region.title()}", f"dra_juliana_dermo_{region_slug}", f"🩺 Médica Dermatologista SBD. Tratamentos faciais, corporais e rejuvenescimento em {region.title()}. 📲 Whats: +55 (11) 97654-3210"),
-            (f"Clínica Integrada de Saúde {region.title()}", f"clinicavita_{region_slug}", f"🏥 Atendimento Médico Multidisciplinar: Cardiologia, Pediatria e Endocrinologia em {region.title()}. 📧 contato@clinicavita.com.br")
-        ]
-    else:
-        profiles_data = [
-            (f"{niche.title()} Especializado {region.title()}", f"{niche_slug}_{region_slug}_oficial", f"🌟 Atendimento profissional em {niche.title()} em {region.title()}. Excelência em serviços qualificados. 📲 WhatsApp: +55 (11) 98888-7777"),
-            (f"Grupo {niche.title()} & Consultoria {region.title()}", f"grupo_{niche_slug}_{region_slug}", f"🏢 Soluções completas e atendimento personalizado para clientes em {region.title()}. 📧 contato@{niche_slug}.com.br"),
-            (f"Dr. Silva - {niche.title()} {region.title()}", f"dr_silva_{niche_slug}_{region_slug}", f"👤 Consultoria e atendimento especializado em {niche.title()} em {region.title()}. Agendamentos via Direct ou WhatsApp."),
-            (f"Studio {niche.title()} Premium {region.title()}", f"studio_{niche_slug}_{region_slug}", f"✨ Estrutura moderna e equipe qualificada em {niche.title()} em {region.title()}. 📞 Fone: +55 (11) 3456-7890"),
-            (f"Escritório {niche.title()} {region.title()}", f"escritorio_{niche_slug}_{region_slug}", f"💼 Serviços corporativos e atendimento presencial / online em {region.title()}. 🌐 contato@{niche_slug}sp.com.br")
-        ]
 
-    for i in range(min(count, 15)):
-        item = profiles_data[i % len(profiles_data)]
-        name, handle, bio = item[0], item[1], item[2]
-        
-        insta_link = f"https://www.instagram.com/{handle}/"
-        phone = f"+55 11 9{random.randint(7000,9999)}-{random.randint(1000,9999)}"
-        
-        leads.append({
-            "Nome": name,
-            "name": name,
-            "Link": insta_link,
-            "link": insta_link,
-            "Descricao (Bio/Web)": bio,
-            "description": bio,
-            "snippet": bio,
-            "Tem Telefone?": "Sim",
-            "Tem E-mail?": "Sim",
-            "has_phone": True,
-            "has_email": True,
-            "_has_contact": True,
-            "_source": "instagram" if "instagram" in str(sources) else "maps",
-            "location": f"{region.title()}, Brasil",
-            "instagram": insta_link
-        })
-        
-    return leads
 
-def get_available_sources():
-    return list(SOURCES.keys()) + [ALL_SOURCES_KEY]
