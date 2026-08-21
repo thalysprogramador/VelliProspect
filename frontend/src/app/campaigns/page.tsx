@@ -52,7 +52,7 @@ export default function Campaigns() {
   };
 
   if (selectedCid) {
-    const camp = campaigns.find(c => c.id === selectedCid);
+    const camp = campaigns.find(c => String(c.id) === String(selectedCid));
     return (
       <div className="p-4 md:p-10 lg:p-16 max-w-7xl mx-auto animate-in fade-in zoom-in-95 duration-500">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 md:mb-12 gap-4">
