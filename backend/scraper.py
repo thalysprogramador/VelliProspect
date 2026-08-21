@@ -27,27 +27,49 @@ BLOCKED_DOMAINS = [
 
 SOURCES = {
     "instagram": {
-        "query_template": '"{niche}" "{region}" instagram',
+        "query_variations": [
+            '"{niche}" "{region}" instagram',
+            '{niche} {region} instagram perfil',
+            '{niche} {region} @instagram',
+            'escritorio {niche} {region} instagram',
+            '{niche} instagram {region} contato',
+        ],
         "skip_domain_filter": True,
     },
     "maps": {
-        "query_template": "{niche} {region} contato telefone",
+        "query_variations": [
+            "{niche} {region} contato telefone",
+            "{niche} {region} google maps endereco",
+            "melhor {niche} {region} contato",
+        ],
         "skip_domain_filter": False,
     },
     "linkedin": {
-        "query_template": "{niche} {region} (site:linkedin.com/in/ OR site:linkedin.com/company/)",
+        "query_variations": [
+            "{niche} {region} site:linkedin.com/in/",
+            "{niche} {region} site:linkedin.com/company/",
+        ],
         "skip_domain_filter": True,
     },
     "maps_insta": {
-        "query_template": "{niche} {region} contato instagram whatsapp",
+        "query_variations": [
+            "{niche} {region} contato instagram whatsapp",
+            "{niche} {region} whatsapp instagram",
+        ],
         "skip_domain_filter": True,
     },
     "facebook": {
-        "query_template": "{niche} {region} site:facebook.com",
+        "query_variations": [
+            "{niche} {region} site:facebook.com",
+            "{niche} {region} facebook pagina",
+        ],
         "skip_domain_filter": True,
     },
     "Sites Proprios": {
-        "query_template": "{niche} {region} contato site empresa",
+        "query_variations": [
+            "{niche} {region} contato site empresa",
+            "{niche} {region} site oficial .com.br",
+        ],
         "skip_domain_filter": False,
     },
 }
@@ -88,7 +110,7 @@ def deduplicate_leads(leads):
     unique = []
 
     for lead in leads:
-        link = lead.get("Link", "").lower().strip()
+        link = lead.get("Link", "").lower().strip().rstrip("/")
         name = lead.get("Nome", "").lower().strip()
 
         if link and link in seen_links:
@@ -103,6 +125,22 @@ def deduplicate_leads(leads):
         unique.append(lead)
 
     return unique
+
+def _get_previously_scraped_urls():
+    """Get all URLs from previous campaigns to avoid repeating leads."""
+    try:
+        import database
+        all_leads = database.get_all_leads()
+        seen = set()
+        for l in all_leads:
+            url = (l.get("link") or "").lower().strip().rstrip("/")
+            if url:
+                seen.add(url)
+        print(f"[Scraper] {len(seen)} URLs de campanhas anteriores carregadas para dedup")
+        return seen
+    except Exception as e:
+        print(f"[Scraper] Erro ao carregar URLs anteriores: {e}")
+        return set()
 
 def _clean_name(title):
     for sep in [" - ", " | ", " \u2014 ", " \u00b7 ", " :: "]:
@@ -140,7 +178,7 @@ def _bing_search(query, max_results=30):
         return []
 
 def _ddgs_search_with_retry(query, max_results, max_retries=2):
-    # Primary ultra-fast engine: DuckDuckGo Search (DDGS)
+    # Primary ultra-fast engine: DuckDuckGo Search (DDGS) with Brazilian region
     try:
         try:
             from ddgs import DDGS
@@ -148,10 +186,10 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
             from duckduckgo_search import DDGS
         results = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
+            for r in ddgs.text(query, max_results=max_results, region="br-pt"):
                 results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
         if results:
-            print(f"[Scraper] Busca DDGS OK: {len(results)} resultados")
+            print(f"[Scraper] Busca DDGS OK: {len(results)} resultados para '{query[:50]}...'")
             return results
     except Exception as e:
         print(f"[Scraper] DDGS falhou ({e}), tentando Bing Fallback...")
@@ -164,97 +202,108 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
 
     return []
 
-def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None):
+def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None):
     leads = []
     source_config = SOURCES.get(source_key, SOURCES["maps"])
-    query = source_config["query_template"].format(niche=niche, region=region)
-    if source_key == "fallback":
-        query = f"{niche} {region} contato site:.com.br"
-        skip_domain = False
-    else:
-        skip_domain = source_config["skip_domain_filter"]
+    skip_domain = source_config.get("skip_domain_filter", False)
+    query_variations = source_config.get("query_variations", ["{niche} {region}"])
+    
+    if previously_seen is None:
+        previously_seen = set()
 
-    print(f"[Scraper] Buscando: '{query}' (fonte: {source_key}, max: {max_results})")
+    seen_urls_local = set()
 
-    try:
-        # Cap fetch_count at 40 to avoid DDGS rate limits and long hangs
-        fetch_count = min(max_results * 2, 40)
-        results = _ddgs_search_with_retry(query, fetch_count)
+    for query_template in query_variations:
+        if len(leads) >= max_results:
+            break
 
-        if not results:
-            print(f"[Scraper] Nenhum resultado retornado para fonte '{source_key}'")
-            return leads
+        query = query_template.format(niche=niche, region=region)
+        
+        if source_key == "fallback":
+            query = f"{niche} {region} contato site:.com.br"
 
-        print(f"[Scraper] {len(results)} resultados brutos recebidos de '{source_key}'")
+        print(f"[Scraper] Buscando: '{query}' (fonte: {source_key}, max: {max_results})")
 
-        for r in results:
-            url = r.get("href", "")
-            title = r.get("title", "")
-            snippet = r.get("body", "")
+        try:
+            fetch_count = min(max_results * 2, 40)
+            results = _ddgs_search_with_retry(query, fetch_count)
 
-            if not skip_domain and is_blocked_domain(url, block_large_portals):
+            if not results:
+                print(f"[Scraper] Nenhum resultado retornado para query '{query[:40]}...'")
                 continue
 
-            # --- FILTRO ESPECIFICO POR FONTE ---
-            url_lower = url.lower()
-            if source_key == "instagram":
-                # Must be a valid direct profile link (not post, reel, explore, popular, tag, etc.)
-                if not is_valid_instagram_profile(url):
+            for r in results:
+                if len(leads) >= max_results:
+                    break
+
+                url = r.get("href", "")
+                title = r.get("title", "")
+                snippet = r.get("body", "")
+
+                # Skip already seen URLs (this campaign + previous campaigns)
+                url_normalized = url.lower().strip().rstrip("/")
+                if url_normalized in seen_urls_local or url_normalized in previously_seen:
                     continue
-                # Clean tracking parameters
-                url = url.split("?")[0].split("#")[0].rstrip("/")
-            
-            elif source_key == "linkedin":
-                if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
-                    continue
-            
-            elif source_key == "facebook":
-                if "facebook.com/" not in url_lower:
+                seen_urls_local.add(url_normalized)
+
+                if not skip_domain and is_blocked_domain(url, block_large_portals):
                     continue
 
-            combined_text = f"{snippet} {title} {url}"
-            has_phone, has_email = extract_contact_info(combined_text)
+                # --- FILTRO ESPECIFICO POR FONTE ---
+                url_lower = url.lower()
+                if source_key == "instagram":
+                    if not is_valid_instagram_profile(url):
+                        continue
+                    url = url.split("?")[0].split("#")[0].rstrip("/")
+                
+                elif source_key == "linkedin":
+                    if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
+                        continue
+                
+                elif source_key == "facebook":
+                    if "facebook.com/" not in url_lower:
+                        continue
 
-            # Fix generic titles from DDGS
-            if title.lower() in ["link to instagram.com", "instagram", ""] and "instagram.com/" in url_lower:
-                try:
-                    from urllib.parse import urlparse
-                    path_parts = [p for p in urlparse(url).path.split("/") if p]
-                    if path_parts:
-                        title = path_parts[0].replace("_", " ").title()
-                except:
-                    pass
+                combined_text = f"{snippet} {title} {url}"
+                has_phone, has_email = extract_contact_info(combined_text)
 
-            name = _clean_name(title)
+                # Fix generic titles from DDGS
+                if title.lower() in ["link to instagram.com", "instagram", ""] and "instagram.com/" in url_lower:
+                    try:
+                        from urllib.parse import urlparse
+                        path_parts = [p for p in urlparse(url).path.split("/") if p]
+                        if path_parts:
+                            title = path_parts[0].replace("_", " ").replace(".", " ").title()
+                    except:
+                        pass
 
-            lead = {
-                "Nome": name,
-                "name": name,
-                "Link": url,
-                "link": url,
-                "Descricao (Bio/Web)": snippet or f"Perfil profissional ativo de {niche} em {region}.",
-                "description": snippet or f"Perfil profissional ativo de {niche} em {region}.",
-                "snippet": snippet or f"Perfil profissional ativo de {niche} em {region}.",
-                "Tem Telefone?": "Sim" if has_phone else "Nao",
-                "Tem E-mail?": "Sim" if has_email else "Nao",
-                "has_phone": has_phone,
-                "has_email": has_email,
-                "_has_contact": has_phone or has_email,
-                "_source": source_key,
-            }
-            leads.append(lead)
+                name = _clean_name(title)
 
-            if on_progress:
-                on_progress(len(leads), max_results, name[:40])
+                lead = {
+                    "Nome": name,
+                    "name": name,
+                    "Link": url,
+                    "link": url,
+                    "Descricao (Bio/Web)": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                    "description": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                    "snippet": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                    "Tem Telefone?": "Sim" if has_phone else "Nao",
+                    "Tem E-mail?": "Sim" if has_email else "Nao",
+                    "has_phone": has_phone,
+                    "has_email": has_email,
+                    "_has_contact": has_phone or has_email,
+                    "_source": source_key,
+                }
+                leads.append(lead)
 
-            if len(leads) >= max_results:
-                break
+                if on_progress:
+                    on_progress(len(leads), max_results, name[:40])
 
-    except Exception as e:
-        print(f"[Scraper] Erro CRITICO na extracao ({source_key}): {e}")
-        traceback.print_exc()
+        except Exception as e:
+            print(f"[Scraper] Erro CRITICO na extracao ({source_key}, query '{query[:40]}...'): {e}")
+            traceback.print_exc()
 
-    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
+    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados (de {len(query_variations)} queries)")
     return leads
 
 def is_valid_instagram_profile(url):
@@ -288,11 +337,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, **kwargs):
     sources = sources or source or ALL_SOURCES_KEY
-    target_pool = min(max_results * 2, 100)
+    target_pool = min(max_results * 3, 150)
     
     print(f"\n{'='*60}")
     print(f"[Scraper] INICIO PARALELO TURBO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
     print(f"{'='*60}")
+
+    # Load previously scraped URLs to avoid repeating leads from past campaigns
+    previously_seen = _get_previously_scraped_urls()
 
     all_leads = []
     
@@ -307,20 +359,20 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
     if not source_keys:
         return []
 
-    per_source = max(target_pool // len(source_keys), 15)
+    per_source = max(target_pool // len(source_keys), 20)
 
     # Parallel scraping across sources with ThreadPoolExecutor
     executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 6))
     try:
         future_to_source = {
-            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress): src_key
+            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress, previously_seen): src_key
             for src_key in source_keys
         }
         
-        for future in as_completed(future_to_source, timeout=12):
+        for future in as_completed(future_to_source, timeout=25):
             src_key = future_to_source[future]
             try:
-                batch = future.result(timeout=2)
+                batch = future.result(timeout=5)
                 all_leads.extend(batch)
                 print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
             except Exception as e:
@@ -332,8 +384,6 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
 
     all_leads = deduplicate_leads(all_leads)
     
-    print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup)")
+    print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup cross-campanha)")
     return all_leads[:target_pool]
-
-
 
