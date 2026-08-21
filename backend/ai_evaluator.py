@@ -9,25 +9,39 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-2.5-flash"):
-    delays = [1, 2]
+def _call_gemini_with_retry(client, prompt, max_retries=3, model="gemini-3.6-flash", response_mime_type=None):
+    models_to_try = [model, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    # De-duplicate while preserving order
+    models_to_try = list(dict.fromkeys([m for m in models_to_try if m]))
+    
+    delays = [1, 2, 4]
     last_err = None
-    for attempt in range(max_retries):
-        try:
-            return client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config={"temperature": 0.1, "http_options": {"timeout": 5.0}}
-            )
-        except Exception as e:
-            last_err = e
-            err_str = str(e).lower()
-            if "429" in err_str or "resource_exhausted" in err_str:
-                if attempt < max_retries - 1:
-                    time.sleep(delays[attempt])
-                continue
-            raise
-    raise Exception(f"Falha apos {max_retries} tentativas: {last_err}")
+    
+    for m in models_to_try:
+        for attempt in range(max_retries):
+            try:
+                config = {"temperature": 0.1}
+                if response_mime_type:
+                    config["response_mime_type"] = response_mime_type
+                    
+                res = client.models.generate_content(
+                    model=m,
+                    contents=prompt,
+                    config=config
+                )
+                if res and res.text:
+                    return res
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                print(f"[AIEvaluator] Modelo {m} tentativa {attempt+1} falhou: {e}")
+                if any(err in err_str for err in ["429", "resource_exhausted", "overloaded", "503", "500", "504", "timeout", "deadline"]):
+                    time.sleep(delays[min(attempt, len(delays)-1)])
+                    continue
+                # If it's a model not found / invalid model error, skip to next model
+                break
+                
+    raise Exception(f"Falha em todos os modelos disponiveis da IA: {last_err}")
 
 ALL_TAGS = [
     "Ticket Alto", "Ticket Baixo", "Sem Site", "Boa Presenca Digital",
@@ -168,11 +182,21 @@ Exemplo:
 """
     try:
         client = genai.Client(api_key=api_key)
-        # Use gemini-2.5-flash which is the current supported model in google-genai SDK
-        response = _call_gemini_with_retry(client, prompt, model="gemini-2.5-flash")
+        # Use a model robust with JSON
+        response = _call_gemini_with_retry(client, prompt, model="gemini-2.5-flash", response_mime_type="application/json")
         
-        text = response.text.replace('```json', '').replace('```', '').strip()
+        text = response.text.strip()
         data = json.loads(text)
+        
+        if isinstance(data, dict):
+            # Sometimes models wrap arrays in dicts
+            for key in data:
+                if isinstance(data[key], list):
+                    data = data[key]
+                    break
+                    
+        if not isinstance(data, list):
+            data = []
         
         results = []
         for i in range(len(leads)):
