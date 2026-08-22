@@ -28,11 +28,10 @@ BLOCKED_DOMAINS = [
 SOURCES = {
     "instagram": {
         "query_variations": [
-            '"{niche}" "{region}" instagram',
-            '{niche} {region} instagram perfil',
-            '{niche} {region} @instagram',
-            'escritorio {niche} {region} instagram',
-            '{niche} instagram {region} contato',
+            'site:instagram.com "{niche}" "{region}"',
+            'site:instagram.com {niche} {region} contato',
+            'site:instagram.com {niche} {region} whatsapp',
+            '{niche} {region} perfil instagram',
         ],
         "skip_domain_filter": True,
     },
