@@ -41,6 +41,10 @@ class CopilotRequest(BaseModel):
 def read_root():
     return {"status": "ok", "app": "Velli Prospect Backend"}
 
+@app.get("/api/version")
+def get_version():
+    return {"version": "2.0.0", "build": "2026-08-22T14:49", "engine": "multi-query-dedup"}
+
 @app.get("/api/campaigns")
 def get_campaigns():
     return db.get_all_campaigns()
