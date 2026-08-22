@@ -43,7 +43,22 @@ def read_root():
 
 @app.get("/api/version")
 def get_version():
-    return {"version": "2.0.0", "build": "2026-08-22T14:49", "engine": "multi-query-dedup"}
+    import os, inspect
+    scraper_source = inspect.getsource(scraper.scrape_leads)
+    has_ddgs = False
+    try:
+        from duckduckgo_search import DDGS
+        has_ddgs = True
+    except Exception as e:
+        has_ddgs = str(e)
+    return {
+        "version": "2.0.0", 
+        "build": "2026-08-22T15:07", 
+        "engine": "multi-query-dedup",
+        "has_ddgs": has_ddgs,
+        "scraper_file": scraper.__file__,
+        "scraper_scrape_leads_snippet": scraper_source[:300]
+    }
 
 @app.get("/api/campaigns")
 def get_campaigns():
