@@ -182,8 +182,8 @@ Exemplo:
 """
     try:
         client = genai.Client(api_key=api_key)
-        # Use a model robust with JSON
-        response = _call_gemini_with_retry(client, prompt, model="gemini-2.5-flash", response_mime_type="application/json")
+        # Use Gemini 3.6 Flash (latest supported model)
+        response = _call_gemini_with_retry(client, prompt, model="gemini-3.6-flash", response_mime_type="application/json")
         
         text = response.text.strip()
         data = json.loads(text)
@@ -332,7 +332,7 @@ Voce esta dentro do software Velli Prospect e tem acesso a base de leads do usua
 
 Responda de forma objetiva, pratica e util. Use emojis com moderacao. Seja como um consultor de vendas senior conversando com o usuario."""
 
-        response = _call_gemini_with_retry(client, prompt, model="gemini-2.5-flash")
+        response = _call_gemini_with_retry(client, prompt, model="gemini-3.6-flash")
         return response.text.strip()
 
     except Exception as e:
