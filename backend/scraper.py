@@ -300,10 +300,41 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                     on_progress(len(leads), max_results, name[:40])
 
         except Exception as e:
-            print(f"[Scraper] Erro CRITICO na extracao ({source_key}, query '{query[:40]}...'): {e}")
-            traceback.print_exc()
+            print(f"[Scraper] Erro na extracao ({source_key}, query '{query[:40]}...'): {e}")
 
-    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados (de {len(query_variations)} queries)")
+    # Fallback geral se a busca restrita nao encontrou perfis suficientes
+    if not leads:
+        fallback_query = f"{niche} {region} contato telefone whatsapp instagram"
+        print(f"[Scraper] Executando busca de contingencia: '{fallback_query}'")
+        try:
+            results = _ddgs_search_with_retry(fallback_query, max_results * 2)
+            for r in results:
+                if len(leads) >= max_results: break
+                url = r.get("href", "")
+                title = r.get("title", "")
+                snippet = r.get("body", "")
+                if not url or (not skip_domain and is_blocked_domain(url, block_large_portals)): continue
+                combined_text = f"{snippet} {title} {url}"
+                has_phone, has_email = extract_contact_info(combined_text)
+                name = _clean_name(title)
+                leads.append({
+                    "Nome": name,
+                    "name": name,
+                    "Link": url,
+                    "link": url,
+                    "Descricao (Bio/Web)": snippet or f"Perfil de {niche} em {region}.",
+                    "description": snippet or f"Perfil de {niche} em {region}.",
+                    "Tem Telefone?": "Sim" if has_phone else "Nao",
+                    "Tem E-mail?": "Sim" if has_email else "Nao",
+                    "has_phone": has_phone,
+                    "has_email": has_email,
+                    "_has_contact": has_phone or has_email,
+                    "_source": source_key
+                })
+        except Exception as e:
+            print(f"[Scraper] Erro no fallback geral: {e}")
+
+    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
     return leads
 
 def is_valid_instagram_profile(url):
