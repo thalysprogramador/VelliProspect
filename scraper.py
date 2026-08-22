@@ -369,10 +369,10 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
             for src_key in source_keys
         }
         
-        for future in as_completed(future_to_source, timeout=25):
+        for future in as_completed(future_to_source, timeout=30):
             src_key = future_to_source[future]
             try:
-                batch = future.result(timeout=5)
+                batch = future.result()
                 all_leads.extend(batch)
                 print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
             except Exception as e:
