@@ -240,9 +240,9 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 title = r.get("title", "")
                 snippet = r.get("body", "")
 
-                # Skip already seen URLs (this campaign + previous campaigns)
+                # Skip URLs already added in this run
                 url_normalized = url.lower().strip().rstrip("/")
-                if url_normalized in seen_urls_local or url_normalized in previously_seen:
+                if url_normalized in seen_urls_local:
                     continue
                 seen_urls_local.add(url_normalized)
 
