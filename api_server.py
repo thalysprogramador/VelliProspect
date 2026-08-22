@@ -44,10 +44,19 @@ def read_root():
 @app.get("/api/version")
 def get_version():
     return {
-        "version": "3.0.0", 
-        "build": "2026-08-22T15:15", 
+        "version": "3.1.0", 
+        "build": "2026-08-22T15:35", 
         "engine": "multi-query-real-leads"
     }
+
+@app.get("/api/debug-scrape")
+def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
+    import traceback
+    try:
+        leads = scraper.scrape_leads(niche=niche, region=region, sources=["instagram"], max_results=3)
+        return {"status": "ok", "count": len(leads), "leads": leads}
+    except Exception as e:
+        return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
 
 @app.get("/api/campaigns")
 def get_campaigns():
