@@ -17,13 +17,42 @@ except ImportError:
 BLOCKED_DOMAINS = [
     "guiamais.com.br", "apontador.com.br", "facebook.com", "linkedin.com",
     "jusbrasil.com.br", "g1.globo.com", "wikipedia.org", "youtube.com",
-    "tripadvisor.com.br", "mercadolivre.com.br", "shopee.com.br", "reclameaqui.com.br",
+    "tripadvisor.com.br", "tripadvisor.com", "mercadolivre.com.br", "shopee.com.br", "reclameaqui.com.br",
     "tiktok.com", "pinterest.com", "sympla.com.br", "eventim.com.br", "doctoralia.com.br",
-    "olx.com.br", "enjoei.com.br", "magazineluiza.com.br", "amazon.com.br",
+    "doctoralia.com.pt", "starofservice.pt", "fadadodente.pt", "docdental.pt",
+    "olx.com.br", "enjoei.com.br", "magazineluiza.com.br", "amazon.com.br", "amazon.com",
     "yelp.com", "glassdoor.com", "glassdoor.com.br", "indeed.com", "indeed.com.br",
     "catho.com.br", "infojobs.com.br", "vagas.com.br", "trampos.co",
-    "twitter.com", "x.com", "gov.br",
+    "twitter.com", "x.com", "gov.br", "jus.br", "phhmortgage.com", "bing.com", "google.com", "duckduckgo.com"
 ]
+
+def is_valid_business_lead(title, url, snippet):
+    """Rejeita resultados corrompidos, erros de indexação e buscas fora de contexto."""
+    if not url or not title:
+        return False
+    
+    url_lower = url.lower()
+    title_lower = title.lower()
+    snippet_lower = snippet.lower() if snippet else ""
+
+    # Palavras de erro e páginas corrompidas conhecidas
+    junk_titles = [
+        "search results", "resultados da busca", "erro 404", "not found", "access denied",
+        "we would like to show you a description", "won't allow us", "login", "entrar",
+        "sign in", "sign up", "cadastre-se", "termos de uso", "privacy policy"
+    ]
+    if any(jt in title_lower or jt in snippet_lower for jt in junk_titles):
+        return False
+
+    # Bloquear domínios conhecidos de lixo
+    if any(b in url_lower for b in BLOCKED_DOMAINS):
+        return False
+
+    # Deve ter um tamanho mínimo de título
+    if len(title.strip()) < 3:
+        return False
+
+    return True
 
 SOURCES = {
     "instagram": {
@@ -245,6 +274,9 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                     continue
                 seen_urls_local.add(url_normalized)
 
+                if not is_valid_business_lead(title, url, snippet):
+                    continue
+
                 if not skip_domain and is_blocked_domain(url, block_large_portals):
                     continue
 
@@ -312,7 +344,7 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 url = r.get("href", "")
                 title = r.get("title", "")
                 snippet = r.get("body", "")
-                if not url or (not skip_domain and is_blocked_domain(url, block_large_portals)): continue
+                if not url or not is_valid_business_lead(title, url, snippet) or (not skip_domain and is_blocked_domain(url, block_large_portals)): continue
                 combined_text = f"{snippet} {title} {url}"
                 has_phone, has_email = extract_contact_info(combined_text)
                 name = _clean_name(title)
