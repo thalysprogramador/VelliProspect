@@ -162,22 +162,29 @@ def evaluate_leads_batch(leads, api_key, criteria):
     for i, lead in enumerate(leads):
         leads_context += f"--- LEAD {i} ---\nNome: {lead.get('Nome')}\nLink: {lead.get('Link')}\nBio: {lead.get('Descricao (Bio/Web)')}\nTelefone: {lead.get('Tem Telefone?')}\n\n"
         
-    prompt = f"""Atue como Especialista de Vendas. Avalie os leads abaixo usando os Criterios do Usuario.
+    prompt = f"""Atue como Especialista em Qualificacao de Leads B2B no Brasil. Avalie os leads abaixo usando os Criterios do Usuario.
     
-=== CRITERIOS ===
+=== CRITERIOS DO USUARIO ===
 {criteria}
 
 === LEADS ===
 {leads_context}
 
-=== REGRAS DAS TAGS (Escolha de 2 a 4 por lead) ===
+=== REGRAS OBRIGATORIAS DE QUALIFICACAO ===
+1. SE O LEAD FOR LIXO, PAGINA DE BUSCA ('Search Results'), LINK CORROMPIDO, CONTEUDO EM INGLES/ESTRANGEIRO, OU NAO FOR UMA EMPRESA/PROFISSIONAL DO NICHO:
+   ATRIBUA NOTA (score) = 1, tags = ["Baixa Presenca Digital"], reason = "Resultado invalido ou fora do nicho/regiao".
+2. Para leads reais de empresas/profissionais validos:
+   - Dê notas de 6 a 10 de acordo com a aderência aos critérios do usuário e potencial de contato.
+   - Escolha de 2 a 4 tags da lista abaixo.
+
+=== REGRAS DAS TAGS ===
 {TAGS_DESCRIPTION}
 
 RETORNE EXATAMENTE UM JSON ARRAY. Nao adicione blocos de codigo ou outro texto.
 Exemplo:
 [
-  {{"score": 8, "reason": "Motivo curto", "tags": ["B2B", "Servico Local"], "decision_maker": "Proprietario", "whatsapp_ready": true}},
-  {{"score": 3, "reason": "Motivo curto", "tags": ["Alta Concorrencia"], "decision_maker": "Atendente", "whatsapp_ready": false}}
+  {{"score": 8, "reason": "Empresa ativa e alinhada ao nicho com bom potencial de abordagem", "tags": ["B2B", "Servico Local"], "decision_maker": "Proprietario", "whatsapp_ready": true}},
+  {{"score": 1, "reason": "Resultado corrompido ou pagina generica fora do nicho", "tags": ["Baixa Presenca Digital"], "decision_maker": "Desconhecido", "whatsapp_ready": false}}
 ]
 """
     try:
