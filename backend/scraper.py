@@ -66,23 +66,24 @@ SOURCES = {
     },
     "maps": {
         "query_variations": [
-            "{niche} {region} contato telefone",
-            "{niche} {region} google maps endereco",
-            "melhor {niche} {region} contato",
+            "{niche} {region} contato telefone whatsapp",
+            "{niche} {region} brasil site:.com.br contato",
+            "escritorio de {niche} {region} contato",
+            "{niche} {region} endereco telefone",
         ],
         "skip_domain_filter": False,
     },
     "linkedin": {
         "query_variations": [
-            "{niche} {region} site:linkedin.com/in/",
-            "{niche} {region} site:linkedin.com/company/",
+            "{niche} {region} brasil site:linkedin.com/in/",
+            "{niche} {region} brasil site:linkedin.com/company/",
         ],
         "skip_domain_filter": True,
     },
     "maps_insta": {
         "query_variations": [
             "{niche} {region} contato instagram whatsapp",
-            "{niche} {region} whatsapp instagram",
+            "{niche} {region} perfil instagram whatsapp",
         ],
         "skip_domain_filter": True,
     },
@@ -95,8 +96,8 @@ SOURCES = {
     },
     "Sites Proprios": {
         "query_variations": [
-            "{niche} {region} contato site empresa",
-            "{niche} {region} site oficial .com.br",
+            "{niche} {region} site:.com.br contato",
+            "{niche} {region} empresa site oficial .com.br",
         ],
         "skip_domain_filter": False,
     },
