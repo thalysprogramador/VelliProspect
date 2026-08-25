@@ -44,17 +44,17 @@ def read_root():
 @app.get("/api/version")
 def get_version():
     return {
-        "version": "3.1.0", 
-        "build": "2026-08-22T15:35", 
-        "engine": "multi-query-real-leads"
+        "version": "4.0.0", 
+        "build": "2026-08-24T22:00", 
+        "engine": "google-search-v4-relevance-filter"
     }
 
 @app.get("/api/debug-scrape")
 def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
     import traceback
     try:
-        leads = scraper.scrape_leads(niche=niche, region=region, sources=["instagram"], max_results=3)
-        return {"status": "ok", "count": len(leads), "leads": leads}
+        leads = scraper.scrape_leads(niche=niche, region=region, sources=["maps"], max_results=5)
+        return {"status": "ok", "count": len(leads), "engine": "v4-google-search", "leads": leads}
     except Exception as e:
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
 
@@ -135,6 +135,10 @@ def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
 
 def run_scrape_task(campaign_id: str, req: ScrapeRequest):
     active_campaigns[campaign_id] = True
+    import time as _time
+    start_time = _time.time()
+    MAX_TASK_SECONDS = 180  # 3 minute hard limit
+    
     try:
         leads = scraper.scrape_leads(
             niche=req.niche,
@@ -145,7 +149,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, total_found=n)
         )
         if not leads:
-            db.update_campaign_stats(campaign_id, status="error")
+            db.update_campaign_stats(campaign_id, status="completed", total_found=0, total_approved=0, total_discarded=0)
             return
             
         db.update_campaign_stats(campaign_id, total_found=len(leads))
@@ -156,12 +160,17 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
         
         batch_size = 30
         for i in range(0, len(leads), batch_size):
+            # Check timeout
+            if _time.time() - start_time > MAX_TASK_SECONDS:
+                print(f"[Backend] Campaign {campaign_id} hit timeout ({MAX_TASK_SECONDS}s)")
+                break
+                
             if not active_campaigns.get(campaign_id, True):
                 print(f"[Backend] Campaign {campaign_id} cancelled.")
                 break
                 
             if approved >= req.max_results:
-                break # We hit the exact target!
+                break
                 
             batch = leads[i:i + batch_size]
             try:
@@ -169,7 +178,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                 
                 for idx, lead in enumerate(batch):
                     if approved >= req.max_results:
-                        break # Stop evaluating if we hit target inside the batch
+                        break
                         
                     evaluated = evaluated_batch[idx] if idx < len(evaluated_batch) else {}
                     score = evaluated.get("score", 5)
@@ -186,7 +195,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                             "tags": evaluated.get("tags", ["Servico Local"]),
                             "decision_maker": evaluated.get("decision_maker", "Proprietario"),
                             "whatsapp_ready": evaluated.get("whatsapp_ready", True),
-                            "source": lead.get("_source", "") # Tag with source
+                            "source": lead.get("_source", "")
                         }
                         db.insert_lead(campaign_id, lead_data)
                         approved += 1
@@ -194,20 +203,18 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         discarded += 1
             except Exception as e:
                 print(f"[Backend Error] Batch evaluation failed: {e}")
-                # Fallback para o lote
                 for lead in batch:
                     if approved >= req.max_results:
                         break
-                        
                     lead_data = {
-                        "name": lead.get("Nome") or lead.get("name") or "Lead Extraído",
+                        "name": lead.get("Nome") or lead.get("name") or "Lead Extraido",
                         "link": lead.get("Link") or lead.get("link") or "",
                         "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional ativo de {req.niche} em {req.region}.",
                         "has_phone": lead.get("Tem Telefone?") == "Sim",
                         "has_email": lead.get("Tem E-mail?") == "Sim",
                         "score": 7,
-                        "reason": "Lead extraído do motor de busca",
-                        "tags": ["Extraído"],
+                        "reason": "Lead extraido do motor de busca",
+                        "tags": ["Extraido"],
                         "decision_maker": "Proprietario",
                         "whatsapp_ready": True,
                         "source": lead.get("_source", "")
@@ -218,7 +225,6 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                     else:
                         discarded += 1
 
-            # Update stats dynamically after each batch
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
                 
         db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
@@ -228,7 +234,15 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
         print(f"[Backend Error] Scrape task failed: {err_detail}")
         db.update_campaign_stats(campaign_id, status="error", status_message=err_detail)
     finally:
+        # ALWAYS ensure campaign is marked as done
         active_campaigns.pop(campaign_id, None)
+        # Double-check status in case of edge cases
+        try:
+            camp = db.get_campaign(campaign_id)
+            if camp and camp.get("status") == "running":
+                db.update_campaign_stats(campaign_id, status="completed")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import uvicorn
