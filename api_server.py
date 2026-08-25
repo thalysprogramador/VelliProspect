@@ -54,6 +54,7 @@ def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
     import traceback
     try:
         q = f"{niche} {region} contato telefone"
+        res_lite = scraper._ddg_lite_search(q, 5)
         res_google = scraper._google_search_engine(q, 5)
         res_bing = scraper._bing_search(q, 5)
         res_ddgs = scraper._ddgs_search(q, 5)
@@ -61,6 +62,7 @@ def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
         return {
             "status": "ok", 
             "count": len(leads), 
+            "ddg_lite_raw": res_lite,
             "google_raw": res_google,
             "bing_raw": res_bing,
             "ddgs_raw": res_ddgs,
