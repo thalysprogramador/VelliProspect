@@ -116,6 +116,7 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
     setTotalApproved(0);
     setTotalDiscarded(0);
     setProgressPercent(0);
+    setLeads([]);
     
     try {
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
