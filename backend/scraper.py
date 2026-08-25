@@ -1,13 +1,12 @@
 """
-Velli Prospect V3 — Scraper Engine (Revisado v3)
-Motor de busca robusto com fallback para servidores cloud.
-Usa DuckDuckGo Search (DDGS) com proxy automatico, retry e tratamento de erro visivel.
+Velli Prospect V4 â€” Scraper Engine (Reescrito)
+Motor de busca com Google Search (googlesearch-python) como primario,
+DDGS como fallback, e validacao rigorosa de relevancia.
 """
 import re
 import time
 import traceback
-
-# Pure Python requests search engine (no C extension segfaults)
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     from googlesearch import search as google_search
@@ -17,93 +16,71 @@ except ImportError:
 BLOCKED_DOMAINS = [
     "guiamais.com.br", "apontador.com.br", "facebook.com", "linkedin.com",
     "jusbrasil.com.br", "g1.globo.com", "wikipedia.org", "youtube.com",
-    "tripadvisor.com.br", "tripadvisor.com", "mercadolivre.com.br", "shopee.com.br", "reclameaqui.com.br",
-    "tiktok.com", "pinterest.com", "sympla.com.br", "eventim.com.br", "doctoralia.com.br",
-    "doctoralia.com.pt", "starofservice.pt", "fadadodente.pt", "docdental.pt",
-    "olx.com.br", "enjoei.com.br", "magazineluiza.com.br", "amazon.com.br", "amazon.com",
-    "yelp.com", "glassdoor.com", "glassdoor.com.br", "indeed.com", "indeed.com.br",
+    "tripadvisor.com.br", "tripadvisor.com", "mercadolivre.com.br", "shopee.com.br",
+    "reclameaqui.com.br", "tiktok.com", "pinterest.com", "sympla.com.br",
+    "eventim.com.br", "doctoralia.com.br", "doctoralia.com.pt", "starofservice.pt",
+    "fadadodente.pt", "docdental.pt", "olx.com.br", "enjoei.com.br",
+    "magazineluiza.com.br", "amazon.com.br", "amazon.com", "yelp.com",
+    "glassdoor.com", "glassdoor.com.br", "indeed.com", "indeed.com.br",
     "catho.com.br", "infojobs.com.br", "vagas.com.br", "trampos.co",
-    "twitter.com", "x.com", "gov.br", "jus.br", "phhmortgage.com", "bing.com", "google.com", "duckduckgo.com"
+    "twitter.com", "x.com", "gov.br", "jus.br", "phhmortgage.com",
+    "bing.com", "google.com", "duckduckgo.com",
 ]
 
-def is_valid_business_lead(title, url, snippet):
-    """Rejeita resultados corrompidos, erros de indexação e buscas fora de contexto."""
-    if not url or not title:
-        return False
-    
-    url_lower = url.lower()
-    title_lower = title.lower()
-    snippet_lower = snippet.lower() if snippet else ""
-
-    # Palavras de erro e páginas corrompidas conhecidas
-    junk_titles = [
-        "search results", "resultados da busca", "erro 404", "not found", "access denied",
-        "we would like to show you a description", "won't allow us", "login", "entrar",
-        "sign in", "sign up", "cadastre-se", "termos de uso", "privacy policy"
-    ]
-    if any(jt in title_lower or jt in snippet_lower for jt in junk_titles):
-        return False
-
-    # Bloquear domínios conhecidos de lixo
-    if any(b in url_lower for b in BLOCKED_DOMAINS):
-        return False
-
-    # Deve ter um tamanho mínimo de título
-    if len(title.strip()) < 3:
-        return False
-
-    return True
+JUNK_INDICATORS = [
+    "search results", "resultados da busca", "erro 404", "not found",
+    "access denied", "we would like to show you a description",
+    "won't allow us", "the site won't allow us", "sign in", "sign up",
+    "cadastre-se", "termos de uso", "privacy policy", "cookie policy",
+    "page not found", "forbidden", "unauthorized", "server error",
+]
 
 SOURCES = {
     "instagram": {
         "query_variations": [
-            'site:instagram.com "{niche}" "{region}"',
-            'site:instagram.com {niche} {region} contato',
-            'site:instagram.com {niche} {region} whatsapp',
-            '{niche} {region} perfil instagram',
+            '"{niche}" "{region}" instagram contato',
+            '{niche} {region} instagram whatsapp',
+            '{niche} {region} perfil profissional instagram',
         ],
         "skip_domain_filter": True,
     },
     "maps": {
         "query_variations": [
-            "{niche} {region} contato telefone whatsapp",
-            "{niche} {region} brasil site:.com.br contato",
-            "escritorio de {niche} {region} contato",
-            "{niche} {region} endereco telefone",
+            '"{niche}" "{region}" contato telefone',
+            '{niche} {region} escritorio contato whatsapp',
+            '{niche} perto de {region} telefone endereco',
         ],
         "skip_domain_filter": False,
     },
     "linkedin": {
         "query_variations": [
-            "{niche} {region} brasil site:linkedin.com/in/",
-            "{niche} {region} brasil site:linkedin.com/company/",
+            '{niche} {region} site:linkedin.com',
         ],
         "skip_domain_filter": True,
     },
     "maps_insta": {
         "query_variations": [
-            "{niche} {region} contato instagram whatsapp",
-            "{niche} {region} perfil instagram whatsapp",
+            '{niche} {region} contato instagram whatsapp',
         ],
         "skip_domain_filter": True,
     },
     "facebook": {
         "query_variations": [
-            "{niche} {region} site:facebook.com",
-            "{niche} {region} facebook pagina",
+            '{niche} {region} site:facebook.com',
         ],
         "skip_domain_filter": True,
     },
     "Sites Proprios": {
         "query_variations": [
-            "{niche} {region} site:.com.br contato",
-            "{niche} {region} empresa site oficial .com.br",
+            '"{niche}" "{region}" site:.com.br contato',
+            '{niche} {region} escritorio site oficial',
         ],
         "skip_domain_filter": False,
     },
 }
 
 ALL_SOURCES_KEY = "Todas as Fontes"
+
 
 def extract_contact_info(text):
     phone_patterns = [
@@ -112,20 +89,11 @@ def extract_contact_info(text):
         r"(?:whatsapp|wpp|zap)[\s:]*(?:\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[\-\s.]?\d{4}",
     ]
     email_pattern = r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
-
-    has_phone = False
-    for pattern in phone_patterns:
-        if re.search(pattern, text, re.IGNORECASE):
-            has_phone = True
-            break
-
+    has_phone = any(re.search(p, text, re.IGNORECASE) for p in phone_patterns)
     emails = re.findall(email_pattern, text, re.IGNORECASE)
-    filtered_emails = [e for e in emails if not any(
-        x in e.lower() for x in ["noreply", "no-reply", "example.com", "sentry", "cloudflare"]
-    )]
-    has_email = bool(filtered_emails)
+    filtered = [e for e in emails if not any(x in e.lower() for x in ["noreply", "no-reply", "example.com", "sentry", "cloudflare"])]
+    return has_phone, bool(filtered)
 
-    return has_phone, has_email
 
 def is_blocked_domain(url, block_large_portals):
     if not block_large_portals:
@@ -133,43 +101,51 @@ def is_blocked_domain(url, block_large_portals):
     url_lower = url.lower()
     return any(blocked in url_lower for blocked in BLOCKED_DOMAINS)
 
+
+def _is_junk(title, snippet):
+    combined = f"{title} {snippet}".lower()
+    return any(junk in combined for junk in JUNK_INDICATORS)
+
+
+def _is_relevant(title, snippet, niche, region):
+    combined = f"{title} {snippet}".lower()
+    niche_words = [w for w in niche.lower().split() if len(w) > 2]
+    region_words = [w for w in region.lower().split() if len(w) > 2]
+    has_niche = any(w in combined for w in niche_words)
+    has_region = any(w in combined for w in region_words)
+    return has_niche or has_region
+
+
+def is_valid_business_lead(title, url, snippet, niche="", region=""):
+    if not url or not title or len(title.strip()) < 3:
+        return False
+    if any(b in url.lower() for b in BLOCKED_DOMAINS):
+        return False
+    if _is_junk(title, snippet):
+        return False
+    if niche and not _is_relevant(title, snippet, niche, region):
+        return False
+    return True
+
+
 def deduplicate_leads(leads):
     seen_links = set()
     seen_names = set()
     unique = []
-
     for lead in leads:
         link = lead.get("Link", "").lower().strip().rstrip("/")
         name = lead.get("Nome", "").lower().strip()
-
         if link and link in seen_links:
             continue
         if name and len(name) > 5 and name in seen_names:
             continue
-
         if link:
             seen_links.add(link)
         if name:
             seen_names.add(name)
         unique.append(lead)
-
     return unique
 
-def _get_previously_scraped_urls():
-    """Get all URLs from previous campaigns to avoid repeating leads."""
-    try:
-        import database
-        all_leads = database.get_all_leads()
-        seen = set()
-        for l in all_leads:
-            url = (l.get("link") or "").lower().strip().rstrip("/")
-            if url:
-                seen.add(url)
-        print(f"[Scraper] {len(seen)} URLs de campanhas anteriores carregadas para dedup")
-        return seen
-    except Exception as e:
-        print(f"[Scraper] Erro ao carregar URLs anteriores: {e}")
-        return set()
 
 def _clean_name(title):
     for sep in [" - ", " | ", " \u2014 ", " \u00b7 ", " :: "]:
@@ -177,37 +153,63 @@ def _clean_name(title):
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
 
-def _bing_search(query, max_results=30):
+
+# ============================================================
+# MOTORES DE BUSCA
+# ============================================================
+
+def _google_search_engine(query, max_results=20):
+    if google_search is None:
+        return []
     try:
-        import requests, re, base64, urllib.parse
+        results = []
+        for url in google_search(query, num_results=max_results, lang="pt", region="BR"):
+            results.append({"href": url, "title": "", "body": ""})
+        if results:
+            print(f"[Scraper] Google OK: {len(results)} resultados para '{query[:50]}...'")
+        return results
+    except Exception as e:
+        print(f"[Scraper] Google falhou: {e}")
+        return []
+
+
+def _bing_search(query, max_results=20):
+    try:
+        import requests, base64, urllib.parse
         from bs4 import BeautifulSoup
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
         }
-        url = 'https://www.bing.com/search?q=' + urllib.parse.quote(query)
-        r = requests.get(url, headers=headers, timeout=4.0)
+        url = 'https://www.bing.com/search?q=' + urllib.parse.quote(query) + '&cc=br&setlang=pt-br'
+        r = requests.get(url, headers=headers, timeout=6.0)
         soup = BeautifulSoup(r.text, 'html.parser')
         results = []
         for item in soup.find_all('li', class_='b_algo'):
             h2 = item.find('h2')
             a = h2.find('a') if h2 else None
-            if not a: continue
+            if not a:
+                continue
             href = a.get('href', '')
             match = re.search(r'[?&]u=a1([a-zA-Z0-9%+\-=]+)', href)
             if match:
                 b64 = match.group(1) + '=' * (-len(match.group(1)) % 4)
-                try: href = base64.b64decode(b64).decode('utf-8', errors='ignore')
-                except: pass
-            snippet = item.find('p').text.strip() if item.find('p') else a.text.strip()
+                try:
+                    href = base64.b64decode(b64).decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+            snippet_el = item.find('p')
+            snippet = snippet_el.text.strip() if snippet_el else a.text.strip()
             results.append({'href': href, 'title': a.text.strip(), 'body': snippet})
+        if results:
+            print(f"[Scraper] Bing OK: {len(results)} resultados")
         return results
     except Exception as e:
-        print(f"[Scraper] Erro Bing Search: {e}")
+        print(f"[Scraper] Bing falhou: {e}")
         return []
 
-def _ddgs_search_with_retry(query, max_results, max_retries=2):
-    # Primary ultra-fast engine: DuckDuckGo Search (DDGS) with Brazilian region
+
+def _ddgs_search(query, max_results=20):
     try:
         try:
             from ddgs import DDGS
@@ -218,80 +220,153 @@ def _ddgs_search_with_retry(query, max_results, max_retries=2):
             for r in ddgs.text(query, max_results=max_results, region="br-pt"):
                 results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
         if results:
-            print(f"[Scraper] Busca DDGS OK: {len(results)} resultados para '{query[:50]}...'")
-            return results
+            print(f"[Scraper] DDGS OK: {len(results)} resultados")
+        return results
     except Exception as e:
-        print(f"[Scraper] DDGS falhou ({e}), tentando Bing Fallback...")
+        print(f"[Scraper] DDGS falhou: {e}")
+        return []
 
-    # Fallback engine: Bing Search via native requests
-    bing_res = _bing_search(query, max_results)
-    if bing_res:
-        print(f"[Scraper] Busca Bing OK: {len(bing_res)} resultados")
-        return bing_res
 
+def _multi_engine_search(query, max_results=20):
+    # 1. Bing Search (Comprovado que funciona bem e traz resultados BR)
+    results = _bing_search(query, max_results)
+    if results:
+        return results
+        
+    # 2. Google Search (Fallback)
+    results = _google_search_engine(query, max_results)
+    if results:
+        return results
+        
+    # 3. DDGS (Fallback)
+    results = _ddgs_search(query, max_results)
+    if results:
+        return results
+        
     return []
+
+
+# ============================================================
+# ENRIQUECIMENTO
+# ============================================================
+
+def _enrich_lead_from_url(url):
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        headers = {'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'pt-BR,pt;q=0.9'}
+        r = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
+        if r.status_code != 200:
+            return None, None
+        soup = BeautifulSoup(r.text[:10000], 'html.parser')
+        title = soup.title.string.strip() if soup.title and soup.title.string else ""
+        meta = soup.find('meta', attrs={'name': 'description'})
+        snippet = meta['content'].strip() if meta and meta.get('content') else ""
+        if not snippet:
+            for p in soup.find_all('p'):
+                text = p.get_text(strip=True)
+                if len(text) > 30:
+                    snippet = text[:200]
+                    break
+        return title, snippet
+    except Exception:
+        return None, None
+
+
+# ============================================================
+# INSTAGRAM VALIDATION
+# ============================================================
+
+def is_valid_instagram_profile(url):
+    if not url or "instagram.com" not in url.lower():
+        return False
+    url_clean = url.split("?")[0].split("#")[0].rstrip("/")
+    url_lower = url_clean.lower()
+    invalid_paths = ["/p/", "/reel/", "/reels/", "/explore/", "/stories/", "/tv/", "/tags/",
+        "/popular/", "/directory/", "/accounts/", "/about/", "/legal/", "/help/",
+        "/developer/", "/privacy/", "/topics/"]
+    if any(p in url_lower for p in invalid_paths):
+        return False
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url_clean)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) != 1:
+            return False
+        return bool(re.match(r"^[a-zA-Z0-9._]{2,30}$", parts[0]))
+    except Exception:
+        return False
+
+
+# ============================================================
+# SCRAPING PRINCIPAL
+# ============================================================
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None):
     leads = []
     source_config = SOURCES.get(source_key, SOURCES["maps"])
     skip_domain = source_config.get("skip_domain_filter", False)
     query_variations = source_config.get("query_variations", ["{niche} {region}"])
-    
     if previously_seen is None:
         previously_seen = set()
-
     seen_urls_local = set()
 
     for query_template in query_variations:
         if len(leads) >= max_results:
             break
-
         query = query_template.format(niche=niche, region=region)
-        
-        if source_key == "fallback":
-            query = f"{niche} {region} contato site:.com.br"
-
-        print(f"[Scraper] Buscando: '{query}' (fonte: {source_key}, max: {max_results})")
-
+        print(f"[Scraper] Buscando: '{query}' (fonte: {source_key})")
         try:
-            fetch_count = min(max_results * 2, 40)
-            results = _ddgs_search_with_retry(query, fetch_count)
-
+            fetch_count = min(max_results * 3, 40)
+            results = _multi_engine_search(query, fetch_count)
             if not results:
-                print(f"[Scraper] Nenhum resultado retornado para query '{query[:40]}...'")
                 continue
 
             for r in results:
                 if len(leads) >= max_results:
                     break
-
                 url = r.get("href", "")
-                title = r.get("title", "")
-                snippet = r.get("body", "")
+                title = r.get("title", "") or ""
+                snippet = r.get("body", "") or ""
+                if not url:
+                    continue
 
-                # Skip URLs already added in this run
                 url_normalized = url.lower().strip().rstrip("/")
-                if url_normalized in seen_urls_local:
+                if url_normalized in seen_urls_local or url_normalized in previously_seen:
                     continue
                 seen_urls_local.add(url_normalized)
 
-                if not is_valid_business_lead(title, url, snippet):
+                # Enriquecer se sem titulo (Google Search retorna so URL)
+                if not title:
+                    try:
+                        t, s = _enrich_lead_from_url(url)
+                        if t: title = t
+                        if s: snippet = s
+                    except Exception:
+                        pass
+
+                if not title:
+                    try:
+                        from urllib.parse import urlparse
+                        title = urlparse(url).hostname.replace("www.", "").split(".")[0].title()
+                    except Exception:
+                        title = "Perfil Encontrado"
+
+                if not is_valid_business_lead(title, url, snippet, niche, region):
                     continue
 
                 if not skip_domain and is_blocked_domain(url, block_large_portals):
                     continue
 
-                # --- FILTRO ESPECIFICO POR FONTE ---
+                # Filtro por fonte
                 url_lower = url.lower()
                 if source_key == "instagram":
                     if not is_valid_instagram_profile(url):
                         continue
                     url = url.split("?")[0].split("#")[0].rstrip("/")
-                
                 elif source_key == "linkedin":
                     if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
                         continue
-                
                 elif source_key == "facebook":
                     if "facebook.com/" not in url_lower:
                         continue
@@ -299,154 +374,139 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 combined_text = f"{snippet} {title} {url}"
                 has_phone, has_email = extract_contact_info(combined_text)
 
-                # Fix generic titles from DDGS
                 if title.lower() in ["link to instagram.com", "instagram", ""] and "instagram.com/" in url_lower:
                     try:
                         from urllib.parse import urlparse
                         path_parts = [p for p in urlparse(url).path.split("/") if p]
                         if path_parts:
                             title = path_parts[0].replace("_", " ").replace(".", " ").title()
-                    except:
+                    except Exception:
                         pass
 
                 name = _clean_name(title)
-
-                lead = {
-                    "Nome": name,
-                    "name": name,
-                    "Link": url,
-                    "link": url,
-                    "Descricao (Bio/Web)": snippet or f"Perfil profissional ativo de {niche} em {region}.",
-                    "description": snippet or f"Perfil profissional ativo de {niche} em {region}.",
-                    "snippet": snippet or f"Perfil profissional ativo de {niche} em {region}.",
+                leads.append({
+                    "Nome": name, "name": name,
+                    "Link": url, "link": url,
+                    "Descricao (Bio/Web)": snippet or f"Perfil de {niche} em {region}.",
+                    "description": snippet or f"Perfil de {niche} em {region}.",
+                    "snippet": snippet or f"Perfil de {niche} em {region}.",
                     "Tem Telefone?": "Sim" if has_phone else "Nao",
                     "Tem E-mail?": "Sim" if has_email else "Nao",
-                    "has_phone": has_phone,
-                    "has_email": has_email,
+                    "has_phone": has_phone, "has_email": has_email,
                     "_has_contact": has_phone or has_email,
                     "_source": source_key,
-                }
-                leads.append(lead)
-
+                })
+                print(f"[Scraper] +Lead: {name[:40]} -> {url[:60]}")
                 if on_progress:
                     on_progress(len(leads), max_results, name[:40])
-
         except Exception as e:
-            print(f"[Scraper] Erro na extracao ({source_key}, query '{query[:40]}...'): {e}")
+            print(f"[Scraper] Erro ({source_key}): {e}")
 
-    # Fallback geral se a busca restrita nao encontrou perfis suficientes
+    # Fallback
     if not leads:
-        fallback_query = f"{niche} {region} contato telefone whatsapp instagram"
-        print(f"[Scraper] Executando busca de contingencia: '{fallback_query}'")
+        fallback_q = f"{niche} {region} contato telefone whatsapp"
+        print(f"[Scraper] Fallback: '{fallback_q}'")
         try:
-            results = _ddgs_search_with_retry(fallback_query, max_results * 2)
+            results = _multi_engine_search(fallback_q, max_results * 2)
             for r in results:
-                if len(leads) >= max_results: break
+                if len(leads) >= max_results:
+                    break
                 url = r.get("href", "")
-                title = r.get("title", "")
-                snippet = r.get("body", "")
-                if not url or not is_valid_business_lead(title, url, snippet) or (not skip_domain and is_blocked_domain(url, block_large_portals)): continue
+                title = r.get("title", "") or ""
+                snippet = r.get("body", "") or ""
+                if not url:
+                    continue
+                if not title:
+                    try:
+                        t, s = _enrich_lead_from_url(url)
+                        if t: title = t
+                        if s: snippet = s
+                    except Exception:
+                        pass
+                if not title:
+                    try:
+                        from urllib.parse import urlparse
+                        title = urlparse(url).hostname.replace("www.", "").split(".")[0].title()
+                    except Exception:
+                        title = "Perfil Encontrado"
+                if not is_valid_business_lead(title, url, snippet, niche, region):
+                    continue
+                if is_blocked_domain(url, block_large_portals):
+                    continue
                 combined_text = f"{snippet} {title} {url}"
                 has_phone, has_email = extract_contact_info(combined_text)
                 name = _clean_name(title)
                 leads.append({
-                    "Nome": name,
-                    "name": name,
-                    "Link": url,
-                    "link": url,
+                    "Nome": name, "name": name, "Link": url, "link": url,
                     "Descricao (Bio/Web)": snippet or f"Perfil de {niche} em {region}.",
                     "description": snippet or f"Perfil de {niche} em {region}.",
                     "Tem Telefone?": "Sim" if has_phone else "Nao",
                     "Tem E-mail?": "Sim" if has_email else "Nao",
-                    "has_phone": has_phone,
-                    "has_email": has_email,
-                    "_has_contact": has_phone or has_email,
-                    "_source": source_key
+                    "has_phone": has_phone, "has_email": has_email,
+                    "_has_contact": has_phone or has_email, "_source": source_key
                 })
         except Exception as e:
-            print(f"[Scraper] Erro no fallback geral: {e}")
+            print(f"[Scraper] Fallback erro: {e}")
 
-    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads processados")
+    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads")
     return leads
 
-def is_valid_instagram_profile(url):
-    if not url or "instagram.com" not in url.lower():
-        return False
-    url_clean = url.split("?")[0].split("#")[0].rstrip("/")
-    url_lower = url_clean.lower()
-    
-    invalid_paths = [
-        "/p/", "/reel/", "/reels/", "/explore/", "/stories/", "/tv/", "/tags/", 
-        "/popular/", "/directory/", "/accounts/", "/about/", "/legal/", "/help/",
-        "/developer/", "/privacy/", "/topics/"
-    ]
-    if any(p in url_lower for p in invalid_paths):
-        return False
-        
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(url_clean)
-        parts = [p for p in parsed.path.split("/") if p]
-        if len(parts) != 1:
-            return False
-        handle = parts[0]
-        if not re.match(r"^[a-zA-Z0-9._]{2,30}$", handle):
-            return False
-        return True
-    except Exception:
-        return False
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+def _get_previously_scraped_urls():
+    try:
+        import database
+        all_leads = database.get_all_leads()
+        seen = set()
+        for l in all_leads:
+            url = (l.get("link") or "").lower().strip().rstrip("/")
+            if url:
+                seen.add(url)
+        print(f"[Scraper] {len(seen)} URLs anteriores carregadas")
+        return seen
+    except Exception as e:
+        print(f"[Scraper] Erro URLs anteriores: {e}")
+        return set()
+
 
 def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, **kwargs):
     sources = sources or source or ALL_SOURCES_KEY
     target_pool = min(max_results * 3, 150)
-    
+
     print(f"\n{'='*60}")
-    print(f"[Scraper] INICIO PARALELO TURBO: nicho='{niche}', regiao='{region}', fontes='{sources}', meta_pool={target_pool}")
+    print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta={target_pool}")
     print(f"{'='*60}")
 
-    # Load previously scraped URLs to avoid repeating leads from past campaigns
     previously_seen = _get_previously_scraped_urls()
 
-    all_leads = []
-    
     if isinstance(sources, str):
-        if sources == ALL_SOURCES_KEY:
-            source_keys = list(SOURCES.keys())
-        else:
-            source_keys = [sources]
+        source_keys = list(SOURCES.keys()) if sources == ALL_SOURCES_KEY else [sources]
     else:
         source_keys = sources
 
     if not source_keys:
         return []
 
-    per_source = max(target_pool // len(source_keys), 20)
+    per_source = max(target_pool // len(source_keys), 15)
 
-    # Parallel scraping across sources with ThreadPoolExecutor
-    executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 6))
+    all_leads = []
+    executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 4))
     try:
         future_to_source = {
-            executor.submit(_scrape_single_source, niche, region, src_key, per_source, block_large_portals, on_progress, previously_seen): src_key
-            for src_key in source_keys
+            executor.submit(_scrape_single_source, niche, region, sk, per_source, block_large_portals, on_progress, previously_seen): sk
+            for sk in source_keys
         }
-        
-        for future in as_completed(future_to_source, timeout=30):
-            src_key = future_to_source[future]
+        for future in as_completed(future_to_source, timeout=45):
+            sk = future_to_source[future]
             try:
                 batch = future.result()
                 all_leads.extend(batch)
-                print(f"[Scraper] Fonte '{src_key}' retornou {len(batch)} leads")
             except Exception as e:
-                print(f"[Scraper] Fonte '{src_key}' falhou ou timeout: {e}")
+                print(f"[Scraper] Fonte '{sk}' falhou: {e}")
     except Exception as e:
-        print(f"[Scraper] Timeout/Erro geral na raspagem paralela: {e}")
+        print(f"[Scraper] Erro geral: {e}")
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
     all_leads = deduplicate_leads(all_leads)
-    
-    print(f"[Scraper] FINAL: {len(all_leads)} leads unicos (apos dedup cross-campanha)")
+    print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos")
     return all_leads[:target_pool]
-
