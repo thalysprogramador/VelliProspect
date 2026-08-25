@@ -227,18 +227,47 @@ def _ddgs_search(query, max_results=20):
         return []
 
 
+def _ddg_lite_search(query, max_results=20):
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        url = 'https://lite.duckduckgo.com/lite/'
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        r = requests.post(url, data={'q': query}, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        results = []
+        for a in soup.find_all('a'):
+            href = a.get('href', '')
+            if 'http' in href and 'duckduckgo' not in href and not href.startswith('/url?'):
+                title = a.text.strip()
+                if title and len(title) > 3:
+                    results.append({'href': href, 'title': title, 'body': ''})
+                    if len(results) >= max_results:
+                        break
+        if results:
+            print(f"[Scraper] DDG Lite OK: {len(results)} resultados")
+        return results
+    except Exception as e:
+        print(f"[Scraper] DDG Lite falhou: {e}")
+        return []
+
 def _multi_engine_search(query, max_results=20):
-    # 1. Bing Search (Comprovado que funciona bem e traz resultados BR)
+    # 1. DDG Lite (Bypassa Cloudflare e funciona bem no Render)
+    results = _ddg_lite_search(query, max_results)
+    if results:
+        return results
+        
+    # 2. Bing Search (Fallback)
     results = _bing_search(query, max_results)
     if results:
         return results
         
-    # 2. Google Search (Fallback)
+    # 3. Google Search (Fallback)
     results = _google_search_engine(query, max_results)
     if results:
         return results
         
-    # 3. DDGS (Fallback)
+    # 4. DDGS API (Fallback)
     results = _ddgs_search(query, max_results)
     if results:
         return results
