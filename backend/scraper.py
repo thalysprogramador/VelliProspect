@@ -217,7 +217,7 @@ def _ddgs_search(query, max_results=20):
             from duckduckgo_search import DDGS
         results = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results, region="br-pt"):
+            for r in ddgs.text(query, max_results=max_results, region="pt-br"):
                 results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
         if results:
             print(f"[Scraper] DDGS OK: {len(results)} resultados")
