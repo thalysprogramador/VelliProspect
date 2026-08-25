@@ -53,9 +53,19 @@ def get_version():
 def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
     import traceback
     try:
-        raw_results = scraper._multi_engine_search(f"{niche} {region} contato telefone", 10)
+        q = f"{niche} {region} contato telefone"
+        res_google = scraper._google_search_engine(q, 5)
+        res_bing = scraper._bing_search(q, 5)
+        res_ddgs = scraper._ddgs_search(q, 5)
         leads = scraper.scrape_leads(niche=niche, region=region, sources=["maps"], max_results=5)
-        return {"status": "ok", "count": len(leads), "engine": "v4-google-search", "raw_search_results": raw_results, "leads": leads}
+        return {
+            "status": "ok", 
+            "count": len(leads), 
+            "google_raw": res_google,
+            "bing_raw": res_bing,
+            "ddgs_raw": res_ddgs,
+            "leads": leads
+        }
     except Exception as e:
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
 
