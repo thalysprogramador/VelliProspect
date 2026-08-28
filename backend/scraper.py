@@ -228,27 +228,85 @@ def _ddgs_search(query, max_results=20):
 
 
 def _ddg_lite_search(query, max_results=20):
+    import requests
+    from bs4 import BeautifulSoup
+    import time
+    import random
+    
+    url = 'https://lite.duckduckgo.com/lite/'
+    uas = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        'Mozilla/5.0 (X11; Linux x86_64)',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'
+    ]
+    
+    for attempt in range(3):
+        try:
+            headers = {'User-Agent': random.choice(uas) + ' AppleWebKit/537.36'}
+            r = requests.post(url, data={'q': query}, headers=headers, timeout=10)
+            
+            if r.status_code == 202 or 'duckduckgo' not in r.text.lower():
+                time.sleep(2)
+                continue
+                
+            soup = BeautifulSoup(r.text, 'html.parser')
+            results = []
+            for a in soup.find_all('a'):
+                href = a.get('href', '')
+                if 'http' in href and 'duckduckgo' not in href and not href.startswith('/url?'):
+                    title = a.text.strip()
+                    if title and len(title) > 3:
+                        results.append({'href': href, 'title': title, 'body': ''})
+                        if len(results) >= max_results:
+                            break
+            
+            if results:
+                print(f"[Scraper] DDG Lite OK (Attempt {attempt+1}): {len(results)} resultados")
+                return results
+                
+        except Exception as e:
+            print(f"[Scraper] DDG Lite Attempt {attempt+1} falhou: {e}")
+            time.sleep(1)
+            
+    return []
+
+def _gemini_synthetic_search(query, max_results=20):
     try:
+        from google import genai
+        import json
+        import database as db
         import requests
-        from bs4 import BeautifulSoup
-        url = 'https://lite.duckduckgo.com/lite/'
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.post(url, data={'q': query}, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        api_key = db.get_setting("gemini_api_key", "")
+        if not api_key: return []
+        
+        client = genai.Client(api_key=api_key)
+        prompt = f"O usuário está buscando: '{query}'. Retorne uma lista de até {max_results} sites reais e existentes que combinem perfeitamente com essa busca no Brasil. Você DEVE retornar APENAS um JSON array. Exemplo: [{{\"title\": \"Nome da Empresa\", \"href\": \"https://www.site.com.br\"}}]"
+        
+        response = client.models.generate_content(
+            model='gemini-3.5-flash',
+            contents=prompt
+        )
+        
+        raw_text = response.text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw_text)
+        
         results = []
-        for a in soup.find_all('a'):
-            href = a.get('href', '')
-            if 'http' in href and 'duckduckgo' not in href and not href.startswith('/url?'):
-                title = a.text.strip()
-                if title and len(title) > 3:
-                    results.append({'href': href, 'title': title, 'body': ''})
-                    if len(results) >= max_results:
-                        break
+        for item in data:
+            if isinstance(item, dict) and 'href' in item:
+                # Opcional: verificar se o site existe rapidamente
+                try:
+                    r = requests.head(item['href'], timeout=3)
+                    if r.status_code < 400 or r.status_code == 403: # 403 is often valid for bots
+                        results.append({"href": item["href"], "title": item.get("title", "Resultado"), "body": ""})
+                except:
+                    pass
         if results:
-            print(f"[Scraper] DDG Lite OK: {len(results)} resultados")
+            print(f"[Scraper] Gemini Synthetic OK: {len(results)} resultados")
         return results
     except Exception as e:
-        print(f"[Scraper] DDG Lite falhou: {e}")
+        print(f"[Scraper] Gemini Synthetic falhou: {e}")
         return []
 
 def _multi_engine_search(query, max_results=20):
@@ -269,6 +327,11 @@ def _multi_engine_search(query, max_results=20):
         
     # 4. DDGS API (Fallback)
     results = _ddgs_search(query, max_results)
+    if results:
+        return results
+        
+    # 5. Gemini Synthetic Search (Ultimate Fallback)
+    results = _gemini_synthetic_search(query, max_results)
     if results:
         return results
         
