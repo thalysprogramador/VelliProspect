@@ -119,9 +119,13 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
     setLeads([]);
     
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ 
           niche, region, criteria: prompt, 
           max_results: maxResults, min_score: minScore, 
@@ -129,6 +133,7 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
           block_large_portals: true 
         })
       });
+      clearTimeout(timeoutId);
       
       if (res.ok) {
         const data = await res.json();
@@ -148,11 +153,15 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         setStatus("error");
-        setStatusMessage("Erro ao iniciar a prospecção. Tente novamente.");
+        setStatusMessage("Erro ao iniciar campanha: " + res.statusText);
       }
-    } catch {
+    } catch (e: any) {
       setStatus("error");
-      setStatusMessage("Falha na conexão com o servidor. Verifique sua internet.");
+      if (e.name === "AbortError") {
+        setStatusMessage("O seu navegador ou antivírus bloqueou a conexão. Desative o AdBlock e tente novamente.");
+      } else {
+        setStatusMessage("Erro de conexão com servidor. Verifique sua internet ou AdBlock.");
+      }
     }
   };
 
