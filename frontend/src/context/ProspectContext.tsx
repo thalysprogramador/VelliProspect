@@ -116,11 +116,10 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
     setTotalApproved(0);
     setTotalDiscarded(0);
     setProgressPercent(0);
-    setLeads([]);
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 seconds (Render cold start can take 60s)
       
       const res = await fetch("https://velli-prospect.onrender.com/api/campaigns", {
         method: "POST",
