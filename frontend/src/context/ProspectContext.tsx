@@ -61,13 +61,28 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
         const r = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${campaignId}`);
         if (r.ok) {
           const data = await r.json();
+          const found = data.total_found || 0;
+          const approved = data.total_approved || 0;
+          const discarded = data.total_discarded || 0;
+          const target = data.max_results || maxResults || 10;
+          
+          // Always update counters in real-time
+          setTotalFound(found);
+          setTotalApproved(approved);
+          setTotalDiscarded(discarded);
+          
           if (data.status === "completed") {
-            setStatus("completed");
-            setTotalApproved(data.total_approved || 0);
-            setTotalDiscarded(data.total_discarded || 0);
-            setTotalFound(data.total_found || 0);
-            setProgressPercent(100);
-            setStatusMessage(`Prospecção finalizada! ${data.total_approved || 0} leads qualificados encontrados.`);
+            // Show final evaluating state briefly before completing
+            setStatus("evaluating");
+            setProgressPercent(95);
+            setStatusMessage(`Finalizando análise... ${approved} leads qualificados de ${found} encontrados.`);
+            
+            // After 1.5s, show completed
+            setTimeout(() => {
+              setStatus("completed");
+              setProgressPercent(100);
+              setStatusMessage(`Prospecção finalizada! ${approved} leads qualificados encontrados.`);
+            }, 1500);
             if (pollRef.current) clearInterval(pollRef.current);
           } else if (data.status === "error") {
             setStatus("error");
@@ -75,30 +90,33 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
             setProgressPercent(0);
             if (pollRef.current) clearInterval(pollRef.current);
           } else {
-            setStatus("scraping");
-            const found = data.total_found || 0;
-            const approved = data.total_approved || 0;
-            const discarded = data.total_discarded || 0;
-            const target = data.max_results || maxResults || 10;
-            const percentValue = (approved / target) * 100;
-            const percent = isNaN(percentValue) ? 0 : Math.min(100, Math.round(percentValue));
+            // Campaign still running - show distinct phases
+            const evaluated = approved + discarded;
             
-            setTotalFound(found);
-            setTotalApproved(approved);
-            setTotalDiscarded(discarded);
-            setProgressPercent(percent);
-            
-            if (data.status_message) {
-              setStatusMessage(data.status_message);
+            if (found === 0) {
+              // Phase 1: Searching
+              setStatus("scraping");
+              setProgressPercent(5);
+              setStatusMessage("🔍 Buscando empresas na região informada...");
+            } else if (evaluated < found) {
+              // Phase 2: Evaluating with AI
+              setStatus("evaluating");
+              const evalPercent = Math.min(90, Math.round((evaluated / found) * 90) + 10);
+              setProgressPercent(evalPercent);
+              setStatusMessage(`🤖 Analisando com IA... Aprovados: ${approved}/${target} | Avaliados: ${evaluated}/${found}`);
             } else {
-              setStatusMessage(`Analisando... Aprovados: ${approved}/${target} (${percent}%) | Avaliados: ${approved + discarded}/${found}`);
+              // Phase 3: All evaluated, waiting for completion
+              setStatus("evaluating");
+              const percentValue = Math.min(95, Math.round((approved / target) * 95));
+              setProgressPercent(isNaN(percentValue) ? 90 : percentValue);
+              setStatusMessage(`✅ Aprovados: ${approved}/${target} | Descartados: ${discarded} | Concluindo...`);
             }
           }
         }
       } catch {
         // Connection error, keep trying
       }
-    }, 2000);
+    }, 1500);
 
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [campaignId, status]);
