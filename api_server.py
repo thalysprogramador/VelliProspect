@@ -216,6 +216,9 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         approved += 1
                     else:
                         discarded += 1
+                    
+                    # Update stats after EACH lead so frontend shows real-time progress
+                    db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
             except Exception as e:
                 print(f"[Backend Error] Batch evaluation failed: {e}")
                 for lead in batch:
