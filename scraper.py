@@ -562,10 +562,11 @@ def _get_previously_scraped_urls():
 
 def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, **kwargs):
     sources = sources or source or ALL_SOURCES_KEY
-    target_pool = min(max_results * 3, 150)
+    # To guarantee we reach the EXACT amount after AI discards, we fetch 5x the requested amount (no hard cap)
+    target_pool = max_results * 5
 
     print(f"\n{'='*60}")
-    print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta={target_pool}")
+    print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta_bruta={target_pool} para obter {max_results} liquidos")
     print(f"{'='*60}")
 
     previously_seen = _get_previously_scraped_urls()
