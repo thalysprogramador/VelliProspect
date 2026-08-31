@@ -152,7 +152,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
     active_campaigns[campaign_id] = True
     import time as _time
     start_time = _time.time()
-    MAX_TASK_SECONDS = 180  # 3 minute hard limit
+    MAX_TASK_SECONDS = 600  # 10 minute hard limit to allow reaching exact quantity for large requests
     
     try:
         leads = scraper.scrape_leads(
