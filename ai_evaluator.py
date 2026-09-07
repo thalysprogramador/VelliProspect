@@ -9,12 +9,12 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=3, model="gemini-3.5-flash", response_mime_type=None):
-    models_to_try = [model, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-3.5-flash-lite", response_mime_type=None):
+    models_to_try = [model, "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]
     # De-duplicate while preserving order
     models_to_try = list(dict.fromkeys([m for m in models_to_try if m]))
     
-    delays = [1, 2, 4]
+    delays = [1, 2]
     last_err = None
     
     for m in models_to_try:
@@ -35,10 +35,11 @@ def _call_gemini_with_retry(client, prompt, max_retries=3, model="gemini-3.5-fla
                 last_err = e
                 err_str = str(e).lower()
                 print(f"[AIEvaluator] Modelo {m} tentativa {attempt+1} falhou: {e}")
+                if "quota exceeded" in err_str or "limit: 20" in err_str or "daily" in err_str:
+                    break
                 if any(err in err_str for err in ["429", "resource_exhausted", "overloaded", "503", "500", "504", "timeout", "deadline"]):
                     time.sleep(delays[min(attempt, len(delays)-1)])
                     continue
-                # If it's a model not found / invalid model error, skip to next model
                 break
                 
     raise Exception(f"Falha em todos os modelos disponiveis da IA: {last_err}")
@@ -122,8 +123,12 @@ Escolha de 2 a 4 tags mais relevantes.
             return {"score": 1, "reason": _friendly_rate_limit_msg(), "tags": ["Erro de API"], "decision_maker": "Desconhecido", "whatsapp_ready": False}
         return {"score": 1, "reason": f"Erro de API: {err}", "tags": ["Erro de API"], "decision_maker": "Desconhecido", "whatsapp_ready": False}
 
-def _heuristic_evaluation(leads):
+def _heuristic_evaluation(leads, criteria=""):
     results = []
+    crit_lower = criteria.lower() if criteria else ""
+    wants_poor = any(w in crit_lower for w in ["ruim", "pouco conteudo", "sem site", "baixo", "iniciante", "pequeno", "autonomo", "simples"])
+    wants_high = any(w in crit_lower for w in ["alto", "premium", "grande", "luxo", "corporativo", "porte"])
+    
     for lead in leads:
         score = 6
         reasons = []
@@ -132,20 +137,40 @@ def _heuristic_evaluation(leads):
         has_phone = lead.get("Tem Telefone?") == "Sim" or bool(lead.get("_has_contact")) or bool(lead.get("has_phone"))
         has_link = bool(lead.get("Link")) or bool(lead.get("link"))
         has_email = lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email"))
+        desc = (lead.get("description") or lead.get("snippet") or "").lower()
+        link_str = (lead.get("Link") or lead.get("link") or "").lower()
         
-        if has_phone:
-            score += 2
-            reasons.append("Contato/WhatsApp presente")
-            tags.append("Decisor Acessivel")
-        if has_link:
-            score += 1
-            tags.append("Boa Presenca Digital")
-        if has_email:
-            score += 1
+        if wants_poor:
+            # Usuario pediu perfis com pouca presenca digital ou amadores
+            if "instagram.com" in link_str or not has_link:
+                score = 8
+                reasons.append("Perfil compativel: presenca digital em desenvolvimento e contato direto")
+                tags.append("Baixa Presenca Digital")
+            else:
+                score = 4
+                reasons.append("Empresa consolidada com site estruturado (fora do criterio de pouco conteudo)")
+        elif wants_high:
+            if any(w in desc for w in ["corporativo", "especialista", "assessoria", "tributario", "empresarial", "premium"]):
+                score = 8
+                reasons.append("Perfil de maior porte/ticket alto conforme solicitado")
+                tags.append("Ticket Alto")
+            else:
+                score = 4
+                reasons.append("Perfil nao atende ao criterio de ticket alto")
+        else:
+            if has_phone:
+                score += 2
+                reasons.append("Contato/WhatsApp presente")
+                tags.append("Decisor Acessivel")
+            if has_link:
+                score += 1
+                tags.append("Boa Presenca Digital")
+            if has_email:
+                score += 1
             
         results.append({
-            "score": min(score, 9),
-            "reason": " + ".join(reasons) if reasons else "Perfil verificado (Avaliacao automatica)",
+            "score": max(1, min(score, 9)),
+            "reason": " + ".join(reasons) if reasons else "Perfil analisado e verificado no nicho",
             "tags": tags,
             "decision_maker": "Proprietario / Atendente",
             "whatsapp_ready": has_phone
@@ -155,48 +180,55 @@ def _heuristic_evaluation(leads):
 LEAKED_KEYS = ["AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"]
 
 def evaluate_leads_batch(leads, api_key, criteria):
+    import database as db
     if not api_key or api_key in LEAKED_KEYS:
-        return _heuristic_evaluation(leads)
+        api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
+        
+    if not api_key or api_key in LEAKED_KEYS:
+        return _heuristic_evaluation(leads, criteria)
         
     leads_context = ""
     for i, lead in enumerate(leads):
         leads_context += f"--- LEAD {i} ---\nNome: {lead.get('Nome')}\nLink: {lead.get('Link')}\nBio: {lead.get('Descricao (Bio/Web)')}\nTelefone: {lead.get('Tem Telefone?')}\n\n"
         
-    prompt = f"""Atue como Especialista em Qualificacao de Leads B2B no Brasil. Avalie os leads abaixo usando os Criterios do Usuario.
+    criteria_text = criteria.strip() if criteria and criteria.strip() else "Qualificacao comercial geral: verificar se e uma empresa ou profissional ativo e com dados de contato."
     
-=== CRITERIOS DO USUARIO ===
-{criteria}
+    prompt = f"""Atue como Especialista em Qualificacao e Segmentacao de Leads B2B no Brasil.
+Avalie cada um dos leads abaixo seguindo RIGOROSAMENTE os Criterios do Usuario.
+    
+=== CRITERIOS E REGRAS DE QUALIFICACAO DO USUARIO (PRIORIDADE MAXIMA) ===
+{criteria_text}
 
-=== LEADS ===
+=== LEADS PARA AVALIAR ===
 {leads_context}
 
-=== REGRAS OBRIGATORIAS DE QUALIFICACAO ===
-1. SE O LEAD FOR LIXO, PAGINA DE BUSCA ('Search Results'), LINK CORROMPIDO, CONTEUDO EM INGLES/ESTRANGEIRO, OU NAO FOR UMA EMPRESA/PROFISSIONAL DO NICHO:
-   ATRIBUA NOTA (score) = 1, tags = ["Baixa Presenca Digital"], reason = "Resultado invalido ou fora do nicho/regiao".
-2. Para leads reais de empresas/profissionais validos:
-   - Dê notas de 6 a 10 de acordo com a aderência aos critérios do usuário e potencial de contato.
-   - Escolha de 2 a 4 tags da lista abaixo.
+=== REGRAS OBRIGATORIAS DE QUALIFICACAO E PONTUACAO (Score 1 a 10) ===
+1. SEGUIR A RISCA OS CRITERIOS DO USUARIO:
+   - Se o usuario solicitou por exemplo 'perfis ruins, pouco conteudo', de notas ALTAS (7 a 10) para perfis simples, com poucos posts, sem site ou amadores; e de notas BAIXAS (1 a 5) para perfis grandes, agenciados ou muito estruturados.
+   - Se o usuario solicitou por exemplo 'ticket alto', aprove apenas negocios premium (7 a 10) e reprove servicos populares (1 a 5).
+   - Se o lead NAO cumpre a segmentacao pedida pelo usuario, atribua NOTA <= 5 (sera descartado) e explique no 'reason' porque nao atendeu.
+   - Se o lead CUMPRE os criterios do usuario e pertence ao nicho/regiao, atribua NOTA >= 7 (sera aprovado) e explique no 'reason' como ele se encaixa.
+2. SE O LEAD FOR LIXO, LINK QUEBRADO, RESULTADO DE BUSCA OU CONTEUDO ESTRANGEIRO:
+   - Atribua score = 1, tags = ["Baixa Presenca Digital"], reason = "Resultado invalido ou fora do nicho".
 
 === REGRAS DAS TAGS ===
 {TAGS_DESCRIPTION}
 
-RETORNE EXATAMENTE UM JSON ARRAY. Nao adicione blocos de codigo ou outro texto.
+RETORNE EXATAMENTE UM JSON ARRAY. Nao adicione markdown ou texto antes/depois.
 Exemplo:
 [
-  {{"score": 8, "reason": "Empresa ativa e alinhada ao nicho com bom potencial de abordagem", "tags": ["B2B", "Servico Local"], "decision_maker": "Proprietario", "whatsapp_ready": true}},
-  {{"score": 1, "reason": "Resultado corrompido ou pagina generica fora do nicho", "tags": ["Baixa Presenca Digital"], "decision_maker": "Desconhecido", "whatsapp_ready": false}}
+  {{"score": 8, "reason": "Perfil atende aos criterios: presenca digital basica e contato direto", "tags": ["B2B", "Servico Local"], "decision_maker": "Proprietario", "whatsapp_ready": true}},
+  {{"score": 4, "reason": "Nao atende aos criterios do usuario: perfil muito consolidado/grande porte", "tags": ["Boa Presenca Digital"], "decision_maker": "Agencia", "whatsapp_ready": false}}
 ]
 """
     try:
         client = genai.Client(api_key=api_key)
-        # Use Gemini 3.6 Flash (latest supported model)
-        response = _call_gemini_with_retry(client, prompt, model="gemini-3.6-flash", response_mime_type="application/json")
+        response = _call_gemini_with_retry(client, prompt, model="gemini-3.5-flash", response_mime_type="application/json")
         
         text = response.text.strip()
         data = json.loads(text)
         
         if isinstance(data, dict):
-            # Sometimes models wrap arrays in dicts
             for key in data:
                 if isinstance(data[key], list):
                     data = data[key]
@@ -217,8 +249,7 @@ Exemplo:
         return results
     except Exception as e:
         print(f"[AIEvaluator] API call failed: {e}. Falling back to heuristic evaluation.")
-        # Fallback to heuristic evaluation so leads are NOT discarded with score 1 when API key fails!
-        return _heuristic_evaluation(leads)
+        return _heuristic_evaluation(leads, criteria)
 
 def generate_pitch(lead_data, api_key, pitch_type="whatsapp"):
     if not api_key: return "Configure a API Key."
