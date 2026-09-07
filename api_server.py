@@ -44,9 +44,9 @@ def read_root():
 @app.get("/api/version")
 def get_version():
     return {
-        "version": "4.0.0", 
-        "build": "2026-08-24T22:00", 
-        "engine": "google-search-v4-relevance-filter"
+        "version": "4.1.0", 
+        "build": "2026-09-07T14:38", 
+        "engine": "velli-precision-v4"
     }
 
 @app.get("/api/debug-scrape")
