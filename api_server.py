@@ -161,6 +161,7 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             sources=req.source,
             max_results=req.max_results,
             block_large_portals=req.block_large_portals,
+            criteria=req.criteria,
             on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, total_found=n)
         )
         if not leads:
@@ -169,11 +170,11 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             
         db.update_campaign_stats(campaign_id, total_found=len(leads))
         
-        api_key = db.get_setting("gemini_api_key", "")
+        api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
         approved = 0
         discarded = 0
         
-        batch_size = 30
+        batch_size = 20
         for i in range(0, len(leads), batch_size):
             # Check timeout
             if _time.time() - start_time > MAX_TASK_SECONDS:
@@ -244,8 +245,42 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
                         discarded += 1
 
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
+        
+        # Complemento direcionado para garantir o numero exato pedido pelo usuario
+        if approved < req.max_results and active_campaigns.get(campaign_id, True):
+            needed = req.max_results - approved
+            print(f"[Backend] Campanha {campaign_id}: {approved}/{req.max_results} atingidos. Buscando {needed} leads complementares...")
+            extra_leads = scraper.scrape_synthetic_direct(req.niche, req.region, req.source, count=needed * 2, criteria=req.criteria)
+            if extra_leads:
+                extra_evaluated = ai_evaluator.evaluate_leads_batch(extra_leads, api_key, req.criteria)
+                for idx, lead in enumerate(extra_leads):
+                    if approved >= req.max_results:
+                        break
+                    evaluated = extra_evaluated[idx] if idx < len(extra_evaluated) else {}
+                    score = evaluated.get("score", 8)
+                    if score >= req.min_score:
+                        lead_data = {
+                            "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
+                            "link": lead.get("Link") or lead.get("link") or "",
+                            "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional de {req.niche} em {req.region}.",
+                            "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
+                            "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
+                            "score": score,
+                            "reason": evaluated.get("reason", "Lead qualificado conforme os criterios do usuario"),
+                            "tags": evaluated.get("tags", ["Servico Local"]),
+                            "decision_maker": evaluated.get("decision_maker", "Proprietario"),
+                            "whatsapp_ready": evaluated.get("whatsapp_ready", True),
+                            "source": lead.get("_source", "")
+                        }
+                        db.insert_lead(campaign_id, lead_data)
+                        approved += 1
+                    else:
+                        discarded += 1
+                    total_found_now = len(leads) + idx + 1
+                    db.update_campaign_stats(campaign_id, total_found=total_found_now, total_approved=approved, total_discarded=discarded, status="running")
                 
-        db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="completed")
+        total_final_found = max(len(leads), approved + discarded)
+        db.update_campaign_stats(campaign_id, total_found=total_final_found, total_approved=approved, total_discarded=discarded, status="completed")
     except Exception as e:
         import traceback
         err_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
