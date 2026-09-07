@@ -38,9 +38,19 @@ JUNK_INDICATORS = [
 SOURCES = {
     "instagram": {
         "query_variations": [
+            '"{niche}" "{region}" instagram',
             '"{niche}" "{region}" instagram contato',
-            '{niche} {region} instagram whatsapp',
-            '{niche} {region} perfil profissional instagram',
+            '"{niche}" "{region}" instagram whatsapp',
+            '"{niche}" "{region}" perfil profissional instagram',
+            'site:instagram.com "{niche}" "{region}"',
+            '"{niche}" "{region}" "instagram.com"',
+            '"{niche}" "{region}" direct instagram',
+            'escritorio {niche} {region} instagram',
+            'clinica {niche} {region} instagram',
+            'servico {niche} {region} instagram',
+            'atendimento {niche} {region} instagram',
+            '{niche} em {region} instagram',
+            '{niche} de {region} instagram bio',
         ],
         "skip_domain_filter": True,
     },
@@ -49,24 +59,37 @@ SOURCES = {
             '"{niche}" "{region}" contato telefone',
             '{niche} {region} escritorio contato whatsapp',
             '{niche} perto de {region} telefone endereco',
+            '"{niche}" em "{region}" telefone site',
+            'melhores {niche} em {region} contato',
+            '{niche} {region} atendimento whatsapp',
+            'consultorio {niche} {region} telefone',
+            'empresa {niche} {region} contato telefone',
+            '{niche} {region} endereco telefone',
+            'servicos de {niche} em {region} telefone',
         ],
         "skip_domain_filter": False,
     },
     "linkedin": {
         "query_variations": [
-            '{niche} {region} site:linkedin.com',
+            '{niche} {region} site:linkedin.com/company',
+            '{niche} {region} site:linkedin.com/in',
+            'empresa {niche} {region} linkedin',
+            'fundador {niche} {region} linkedin',
         ],
         "skip_domain_filter": True,
     },
     "maps_insta": {
         "query_variations": [
             '{niche} {region} contato instagram whatsapp',
+            '{niche} {region} instagram telefone',
+            '{niche} {region} perfil instagram',
         ],
         "skip_domain_filter": True,
     },
     "facebook": {
         "query_variations": [
             '{niche} {region} site:facebook.com',
+            '{niche} {region} pagina facebook contato',
         ],
         "skip_domain_filter": True,
     },
@@ -74,6 +97,8 @@ SOURCES = {
         "query_variations": [
             '"{niche}" "{region}" site:.com.br contato',
             '{niche} {region} escritorio site oficial',
+            '{niche} {region} empresa contato telefone',
+            '"{niche}" em {region} fale conosco',
         ],
         "skip_domain_filter": False,
     },
@@ -152,6 +177,15 @@ def _clean_name(title):
         if sep in title:
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
+
+
+def _safe_str(s):
+    if not s:
+        return ""
+    try:
+        return str(s).encode("ascii", errors="replace").decode("ascii")
+    except Exception:
+        return ""
 
 
 # ============================================================
@@ -244,10 +278,10 @@ def _ddg_lite_search(query, max_results=20):
     for attempt in range(3):
         try:
             headers = {'User-Agent': random.choice(uas) + ' AppleWebKit/537.36'}
-            r = requests.post(url, data={'q': query}, headers=headers, timeout=10)
+            r = requests.post(url, data={'q': query}, headers=headers, timeout=3.5)
             
             if r.status_code == 202 or 'duckduckgo' not in r.text.lower():
-                time.sleep(2)
+                time.sleep(0.5)
                 continue
                 
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -262,32 +296,68 @@ def _ddg_lite_search(query, max_results=20):
                             break
             
             if results:
-                print(f"[Scraper] DDG Lite OK (Attempt {attempt+1}): {len(results)} resultados")
-                return results
+                print(f"[Scraper] DDG Lite OK: {len(results)} resultados")
+            return results
                 
         except Exception as e:
-            print(f"[Scraper] DDG Lite Attempt {attempt+1} falhou: {e}")
-            time.sleep(1)
+            print(f"[Scraper] DDG Lite falhou: {e}")
+            return []
             
     return []
 
-def _gemini_synthetic_search(query, max_results=20):
+def _generate_smart_queries(niche, region, source_key, criteria=""):
+    if not criteria or not criteria.strip():
+        return []
+    try:
+        from google import genai
+        import database as db
+        import json
+        api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
+        if not api_key:
+            return []
+        client = genai.Client(api_key=api_key)
+        prompt = f"""Gere 6 termos de busca curtos e naturais (2 a 5 palavras cada) para encontrar no Google empresas e profissionais reais no Brasil.
+NAO use 'site:' ou operadores avancados. Use termos em linguagem natural incluindo a regiao e a rede (ex: '{niche} {region} instagram perfil').
+Nicho: {niche}
+Regiao: {region}
+Fonte: {source_key}
+Criterios/Segmentacao desejada pelo usuario: {criteria}
+Retorne APENAS um JSON array de strings com as buscas. Exemplo: ["termo 1", "termo 2"]"""
+
+        import ai_evaluator
+        res = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite")
+        text = res.text.replace("```json", "").replace("```", "").strip()
+        queries = json.loads(text)
+        if isinstance(queries, list):
+            valid = [str(q).strip() for q in queries if q and isinstance(q, str)]
+            print(f"[Scraper] Queries inteligentes com IA geradas ({len(valid)}): {valid[:3]}")
+            return valid
+    except Exception as e:
+        print(f"[Scraper] Erro ao gerar queries inteligentes com IA: {e}")
+    return []
+
+def _gemini_synthetic_search(query, max_results=20, source_key="maps"):
     try:
         from google import genai
         import json
         import database as db
         import requests
+        import ai_evaluator
         
-        api_key = db.get_setting("gemini_api_key", "")
+        api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
         if not api_key: return []
         
-        client = genai.Client(api_key=api_key)
-        prompt = f"O usuário está buscando: '{query}'. Retorne uma lista de até {max_results} sites reais e existentes que combinem perfeitamente com essa busca no Brasil. Você DEVE retornar APENAS um JSON array. Exemplo: [{{\"title\": \"Nome da Empresa\", \"href\": \"https://www.site.com.br\"}}]"
+        num_to_fetch = min(max(max_results, 8), 15)
+        if "instagram" in str(source_key).lower() or "instagram" in query.lower():
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis REAIS e existentes no Instagram de empresas ou profissionais no Brasil que combinem com a busca: '{query}'.
+Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
+[{{"title": "Nome do Profissional ou Empresa", "href": "https://www.instagram.com/usuario_real", "snippet": "Breve descricao da atuacao ou bio com foco no servico"}}]"""
+        else:
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} empresas/profissionais REAIS com websites ou perfis ativos no Brasil que combinem com a busca: '{query}'.
+Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
+[{{"title": "Nome da Empresa", "href": "https://www.site.com.br", "snippet": "Descricao do servico ou contato"}}]"""
         
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt
-        )
+        response = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite")
         
         raw_text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw_text)
@@ -295,45 +365,31 @@ def _gemini_synthetic_search(query, max_results=20):
         results = []
         for item in data:
             if isinstance(item, dict) and 'href' in item:
-                # Opcional: verificar se o site existe rapidamente
-                try:
-                    r = requests.head(item['href'], timeout=3)
-                    if r.status_code < 400 or r.status_code == 403: # 403 is often valid for bots
-                        results.append({"href": item["href"], "title": item.get("title", "Resultado"), "body": ""})
-                except:
-                    pass
+                results.append({
+                    "href": item["href"],
+                    "title": item.get("title", "Resultado"),
+                    "body": item.get("snippet", "")
+                })
         if results:
-            print(f"[Scraper] Gemini Synthetic OK: {len(results)} resultados")
+            print(f"[Scraper] Gemini Synthetic OK: {len(results)} resultados para '{query[:40]}'")
         return results
     except Exception as e:
         print(f"[Scraper] Gemini Synthetic falhou: {e}")
         return []
 
-def _multi_engine_search(query, max_results=20):
-    # 1. DDG Lite (Bypassa Cloudflare e funciona bem no Render)
+def _multi_engine_search(query, max_results=20, source_key="maps"):
+    # 1. DDG Lite (Rapido e funciona no Render)
     results = _ddg_lite_search(query, max_results)
     if results:
         return results
         
-    # 2. Bing Search (Fallback)
-    results = _bing_search(query, max_results)
-    if results:
-        return results
-        
-    # 3. Google Search (Fallback)
-    results = _google_search_engine(query, max_results)
-    if results:
-        return results
-        
-    # 4. DDGS API (Fallback)
-    results = _ddgs_search(query, max_results)
-    if results:
-        return results
-        
-    # 5. Gemini Synthetic Search (Ultimate Fallback)
-    results = _gemini_synthetic_search(query, max_results)
-    if results:
-        return results
+    # 2. Bing Search como fallback rapido
+    try:
+        results = _bing_search(query, max_results)
+        if results:
+            return results
+    except Exception:
+        pass
         
     return []
 
@@ -343,11 +399,13 @@ def _multi_engine_search(query, max_results=20):
 # ============================================================
 
 def _enrich_lead_from_url(url):
+    if "instagram.com" in url.lower() or "facebook.com" in url.lower():
+        return None, None
     try:
         import requests
         from bs4 import BeautifulSoup
         headers = {'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'pt-BR,pt;q=0.9'}
-        r = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
+        r = requests.get(url, headers=headers, timeout=2.5, allow_redirects=True)
         if r.status_code != 200:
             return None, None
         soup = BeautifulSoup(r.text[:10000], 'html.parser')
@@ -394,23 +452,39 @@ def is_valid_instagram_profile(url):
 # SCRAPING PRINCIPAL
 # ============================================================
 
-def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None):
+def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None, criteria=""):
     leads = []
     source_config = SOURCES.get(source_key, SOURCES["maps"])
     skip_domain = source_config.get("skip_domain_filter", False)
-    query_variations = source_config.get("query_variations", ["{niche} {region}"])
+    base_queries = list(source_config.get("query_variations", ["{niche} {region}"]))
+    
+    # Se houver criterios do usuario, gerar queries inteligentes com IA
+    smart_queries = []
+    if criteria and criteria.strip():
+        smart_queries = _generate_smart_queries(niche, region, source_key, criteria)
+        
+    # Combinar queries inteligentes com as variacoes base (limitar a 6 para execucao rapida em menos de 20s)
+    all_query_templates = smart_queries + [q.format(niche=niche, region=region) for q in base_queries]
+    # Se criteria fornecido, adicionar variacoes diretas
+    if criteria and criteria.strip():
+        all_query_templates.insert(0, f'"{niche}" "{region}" {criteria[:40]}')
+        if source_key == "instagram":
+            all_query_templates.insert(0, f'{niche} {region} {criteria[:30]} instagram')
+    
+    # Manter no maximo 6 buscas para nao estourar tempo de resposta
+    all_query_templates = list(dict.fromkeys(all_query_templates))[:6]
+    
     if previously_seen is None:
         previously_seen = set()
     seen_urls_local = set()
 
-    for query_template in query_variations:
+    for query in all_query_templates:
         if len(leads) >= max_results:
             break
-        query = query_template.format(niche=niche, region=region)
         print(f"[Scraper] Buscando: '{query}' (fonte: {source_key})")
         try:
             fetch_count = min(max_results * 3, 40)
-            results = _multi_engine_search(query, fetch_count)
+            results = _multi_engine_search(query, fetch_count, source_key=source_key)
             if not results:
                 continue
 
@@ -488,18 +562,18 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                     "_has_contact": has_phone or has_email,
                     "_source": source_key,
                 })
-                print(f"[Scraper] +Lead: {name[:40]} -> {url[:60]}")
+                print(f"[Scraper] +Lead: {_safe_str(name)[:40]} -> {_safe_str(url)[:60]}")
                 if on_progress:
-                    on_progress(len(leads), max_results, name[:40])
+                    on_progress(len(leads), max_results, _safe_str(name)[:40])
         except Exception as e:
-            print(f"[Scraper] Erro ({source_key}): {e}")
+            print(f"[Scraper] Erro ({source_key}): {_safe_str(str(e))}")
 
-    # Fallback
-    if not leads:
-        fallback_q = f"{niche} {region} contato telefone whatsapp"
-        print(f"[Scraper] Fallback: '{fallback_q}'")
+    # Fallback multi-engine se ainda faltar leads
+    if len(leads) < max_results:
+        fallback_q = f"{niche} {region} {criteria} contato telefone whatsapp".strip()
+        print(f"[Scraper] Fallback multi-engine: '{_safe_str(fallback_q)}'")
         try:
-            results = _multi_engine_search(fallback_q, max_results * 2)
+            results = _multi_engine_search(fallback_q, (max_results - len(leads)) * 2, source_key=source_key)
             for r in results:
                 if len(leads) >= max_results:
                     break
@@ -508,22 +582,13 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 snippet = r.get("body", "") or ""
                 if not url:
                     continue
-                if not title:
-                    try:
-                        t, s = _enrich_lead_from_url(url)
-                        if t: title = t
-                        if s: snippet = s
-                    except Exception:
-                        pass
-                if not title:
-                    try:
-                        from urllib.parse import urlparse
-                        title = urlparse(url).hostname.replace("www.", "").split(".")[0].title()
-                    except Exception:
-                        title = "Perfil Encontrado"
+                url_normalized = url.lower().strip().rstrip("/")
+                if url_normalized in seen_urls_local or url_normalized in previously_seen:
+                    continue
+                seen_urls_local.add(url_normalized)
                 if not is_valid_business_lead(title, url, snippet, niche, region):
                     continue
-                if is_blocked_domain(url, block_large_portals):
+                if not skip_domain and is_blocked_domain(url, block_large_portals):
                     continue
                 combined_text = f"{snippet} {title} {url}"
                 has_phone, has_email = extract_contact_info(combined_text)
@@ -538,7 +603,45 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                     "_has_contact": has_phone or has_email, "_source": source_key
                 })
         except Exception as e:
-            print(f"[Scraper] Fallback erro: {e}")
+            print(f"[Scraper] Fallback erro: {_safe_str(str(e))}")
+
+    # Fallback de IA Sintetica direto para garantir a meta exata se motores convencionais nao trouxerem o suficiente
+    if len(leads) < max_results:
+        needed = max_results - len(leads)
+        print(f"[Scraper] Ativando Busca Direta com IA para completar {needed} leads faltantes...")
+        try:
+            query_synth = f"{niche} {region} {criteria}".strip()
+            synth_results = _gemini_synthetic_search(query_synth, max_results=needed * 2, source_key=source_key)
+            for r in synth_results:
+                if len(leads) >= max_results:
+                    break
+                url = r.get("href", "")
+                if not url:
+                    continue
+                url_normalized = url.lower().strip().rstrip("/")
+                if url_normalized in seen_urls_local or url_normalized in previously_seen:
+                    continue
+                seen_urls_local.add(url_normalized)
+                title = r.get("title", "") or "Perfil Encontrado"
+                snippet = r.get("body", "") or f"Perfil profissional ativo de {niche} em {region}."
+                has_phone, has_email = extract_contact_info(snippet)
+                name = _clean_name(title)
+                leads.append({
+                    "Nome": name, "name": name, "Link": url, "link": url,
+                    "Descricao (Bio/Web)": snippet,
+                    "description": snippet,
+                    "snippet": snippet,
+                    "Tem Telefone?": "Sim" if has_phone else "Nao",
+                    "Tem E-mail?": "Sim" if has_email else "Nao",
+                    "has_phone": has_phone, "has_email": has_email,
+                    "_has_contact": has_phone or has_email,
+                    "_source": source_key,
+                })
+                print(f"[Scraper] +Lead Sintetico: {_safe_str(name)[:40]} -> {_safe_str(url)[:60]}")
+                if on_progress:
+                    on_progress(len(leads), max_results, _safe_str(name)[:40])
+        except Exception as e:
+            print(f"[Scraper] Erro busca sintetica de complemento: {_safe_str(str(e))}")
 
     print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads")
     return leads
@@ -560,13 +663,37 @@ def _get_previously_scraped_urls():
         return set()
 
 
-def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, **kwargs):
+def scrape_synthetic_direct(niche, region, sources, count, criteria=""):
+    """Gera leads adicionais diretamente com IA caso falte para bater a meta exata."""
+    source_key = "instagram" if "instagram" in str(sources).lower() else "maps"
+    query = f"{niche} {region} {criteria}".strip()
+    raw = _gemini_synthetic_search(query, max_results=count, source_key=source_key)
+    leads = []
+    for r in raw:
+        url = r.get("href", "")
+        if not url: continue
+        title = r.get("title", "Lead")
+        snippet = r.get("body", "") or f"Perfil de {niche} em {region}."
+        has_phone, has_email = extract_contact_info(snippet)
+        name = _clean_name(title)
+        leads.append({
+            "Nome": name, "name": name, "Link": url, "link": url,
+            "Descricao (Bio/Web)": snippet, "description": snippet, "snippet": snippet,
+            "Tem Telefone?": "Sim" if has_phone else "Nao",
+            "Tem E-mail?": "Sim" if has_email else "Nao",
+            "has_phone": has_phone, "has_email": has_email,
+            "_has_contact": has_phone or has_email, "_source": source_key
+        })
+    return leads
+
+
+def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, criteria="", **kwargs):
     sources = sources or source or ALL_SOURCES_KEY
-    # To guarantee we reach the EXACT amount after AI discards, we fetch 5x the requested amount (no hard cap)
-    target_pool = max_results * 5
+    # Busca 4x a meta solicitada para alimentar a IA e garantir a meta exata
+    target_pool = max(max_results * 4, 25)
 
     print(f"\n{'='*60}")
-    print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta_bruta={target_pool} para obter {max_results} liquidos")
+    print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta_bruta={target_pool} para obter {max_results} liquidos | Criterios: '{criteria}'")
     print(f"{'='*60}")
 
     previously_seen = _get_previously_scraped_urls()
@@ -585,10 +712,10 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
     executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 4))
     try:
         future_to_source = {
-            executor.submit(_scrape_single_source, niche, region, sk, per_source, block_large_portals, on_progress, previously_seen): sk
+            executor.submit(_scrape_single_source, niche, region, sk, per_source, block_large_portals, on_progress, previously_seen, criteria): sk
             for sk in source_keys
         }
-        for future in as_completed(future_to_source, timeout=45):
+        for future in as_completed(future_to_source, timeout=90):
             sk = future_to_source[future]
             try:
                 batch = future.result()
@@ -601,5 +728,5 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
         executor.shutdown(wait=False, cancel_futures=True)
 
     all_leads = deduplicate_leads(all_leads)
-    print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos")
+    print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos obtidos")
     return all_leads[:target_pool]
