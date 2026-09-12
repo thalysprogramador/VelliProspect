@@ -1,0 +1,88 @@
+{
+  "campaigns": [
+    {
+      "id": 1,
+      "name": "Clínica de estética — Brasília",
+      "niche": "Clínica de estética",
+      "region": "Brasília",
+      "source": "Instagram",
+      "criteria": "Procure empresas que parecem pequenas ou não têm site profissional. Exclua franquias gigantes.",
+      "min_score": 4,
+      "max_results": 3,
+      "status": "completed",
+      "total_found": 3,
+      "total_approved": 3,
+      "total_discarded": 0,
+      "created_at": "2026-04-16T21:19:00.894249",
+      "finished_at": "2026-04-16T21:19:37.468959"
+    }
+  ],
+  "leads": [
+    {
+      "id": 1,
+      "campaign_id": 1,
+      "name": "Clínica de Estética Brasília (@lizramalhoestetica ...",
+      "link": "https://www.instagram.com/lizramalhoestetica/",
+      "description": "19K Followers, 126 Following, 269 Posts - Clínica de Estética Brasília (@lizramalhoestetica) on Instagram: \"★ Redefinindo padrões em Brasília com Hybrius! 🥇 ★ Estética Facial e Corporal + de 150 corpos transformados ★ Agende seu horário no link abaixo 👇🏻\"",
+      "has_phone": 0,
+      "has_email": 0,
+      "score": 8,
+      "reason": "A clínica demonstra uma forte presença no Instagram com alto engajamento, indicando consciência da importância do digital, mas provavelmente carece de um site profissional e estratégia multicanal. O segmento de estética de alto valor em uma capital como Brasília sugere budget para investimento em marketing.",
+      "tags": [
+        "Ticket Alto",
+        "Sem Site",
+        "Boa Presença Digital",
+        "Decisor Acessível"
+      ],
+      "decision_maker": "Proprietária",
+      "whatsapp_ready": 0,
+      "status": "approved",
+      "created_at": "2026-04-16T21:19:11.431021"
+    },
+    {
+      "id": 2,
+      "campaign_id": 1,
+      "name": "Cliniestética Brasília (@cliniesteticadf)",
+      "link": "https://www.instagram.com/cliniesteticadf/",
+      "description": "13K Followers, 348 Following, 421 Posts - See Instagram photos and videos from Cliniestética Brasília (@cliniesteticadf)",
+      "has_phone": 0,
+      "has_email": 0,
+      "score": 8,
+      "reason": "Possui uma base de seguidores relevante no Instagram, indicando investimento e abertura para marketing digital, mas provavelmente carece de um site profissional e estratégias integradas para escalar.",
+      "tags": [
+        "Ticket Alto",
+        "Sem Site",
+        "Boa Presença Digital",
+        "Alta Concorrência"
+      ],
+      "decision_maker": "Proprietário",
+      "whatsapp_ready": 0,
+      "status": "approved",
+      "created_at": "2026-04-16T21:19:23.762131"
+    },
+    {
+      "id": 3,
+      "campaign_id": 1,
+      "name": "Clínica Bella Ricca",
+      "link": "https://www.instagram.com/clinicabellaricca/",
+      "description": "2,467 Followers, 204 Following, 461 Posts - Clínica Bella Ricca | Estética Avançada em Brasília (@clinicabellaricca) on Instagram: \"💎 Cuidar de si é a experiência mais BELLA Acolhimento, inovação e sensibilidade Protocolos exclusivos com naturalidade & elegância 📍Brasília|Agende 👇\" 5,109 Followers, 143 Following, 326 Posts - Clínica de Estética Corpo Bueno | Brasília (@corpobuenobrasilia) on Instagram: \"Alcance a sua melhor versão. • Corporal e facial • Depilação a laser 📱 (61) 99943-6935 | (61) 4042-0902 📒 Agendamento | Site | Clique no link:\" 3,068 Followers, 3,301 Following, 82 Posts - CLÍNICA DE ESTÉTICA EM BRASÍLIA (@belaesteticaavancadaa) on Instagram: \"💉MÉTODO LIPO SEM CORTE ️Harmonização Corporal ️Estética Facial e Corporal 📌Brasilia-DF\" 14K Followers, 6,995 Following, 1,274 Posts - Estética Avançada Brasília| botox e facial (@clinicabemestaresthetic) on Instagram: \"Há 15 anos transformando autoestima em histórias reais💫 Médicos , Fisioterapia, Biomédica,Nutricionista,Terapeuta e Estetic 📆AGENDE ONLINE, CLIQUE👇\" 43K Followers, 142 Following, 691 Posts - Clinica de Estética em Brasília (@clinicasantaestetica) on Instagram: \"Harmonização e Estética facial 13 anos de experiência Tenha uma pele mais jovem e lábios irresistíveis, com naturalidade e elegância.\"",
+      "has_phone": 1,
+      "has_email": 0,
+      "score": 8,
+      "reason": "Clínica de estética com serviços de alto ticket e presença digital moderada, mas com forte concorrência local e oportunidade para crescimento e diferenciação.",
+      "tags": [
+        "Ticket Alto",
+        "Sem Site",
+        "Baixa Presença Digital",
+        "Alta Concorrência"
+      ],
+      "decision_maker": "Proprietário",
+      "whatsapp_ready": 1,
+      "status": "approved",
+      "created_at": "2026-04-16T21:19:34.940402"
+    }
+  ],
+  "settings": {
+    "gemini_api_key": "AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"
+  }
+}
