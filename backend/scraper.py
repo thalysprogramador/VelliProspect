@@ -325,7 +325,7 @@ Criterios/Segmentacao desejada pelo usuario: {criteria}
 Retorne APENAS um JSON array de strings com as buscas. Exemplo: ["termo 1", "termo 2"]"""
 
         import ai_evaluator
-        res = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite")
+        res = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.6-flash")
         text = res.text.replace("```json", "").replace("```", "").strip()
         queries = json.loads(text)
         if isinstance(queries, list):
@@ -357,7 +357,7 @@ Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
 Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
 [{{"title": "Nome da Empresa", "href": "https://www.site.com.br", "snippet": "Descricao do servico ou contato"}}]"""
         
-        response = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite")
+        response = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.6-flash")
         
         raw_text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw_text)
@@ -386,6 +386,14 @@ def _multi_engine_search(query, max_results=20, source_key="maps"):
     # 2. Bing Search como fallback rapido
     try:
         results = _bing_search(query, max_results)
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # 3. Gemini Synthetic como garantia de resultados
+    try:
+        results = _gemini_synthetic_search(query, max_results, source_key)
         if results:
             return results
     except Exception:
