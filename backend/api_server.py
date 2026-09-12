@@ -141,7 +141,7 @@ def create_campaign(req: ScrapeRequest, background_tasks: BackgroundTasks):
         background_tasks.add_task(run_scrape_task, cid, req)
         
         comp_data = db.get_campaign(cid) or {"id": cid, "status": "scraping"}
-        return {"status": "scraping", "campaign": comp_data}
+        return {"status": "scraping", "id": cid, "campaign": comp_data}
     except Exception as e:
         import traceback
         err_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
