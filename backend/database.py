@@ -15,8 +15,8 @@ import tempfile
 # === Fallback Local ===
 LOCAL_DB_PATH = os.path.join(tempfile.gettempdir(), "velli_local_data.json")
 
-# Gemini API Key default (pre-salva)
-DEFAULT_GEMINI_KEY = "AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I"
+# Gemini API Key default (loaded from environment variable GEMINI_DEFAULT_KEY)
+DEFAULT_GEMINI_KEY = os.environ.get("GEMINI_DEFAULT_KEY", "")
 
 _supabase = None
 _use_local = False
@@ -41,6 +41,8 @@ def get_connection():
     global _supabase, _use_local
     if _supabase is not None:
         return _supabase
+    if _use_local:
+        return None
     try:
         from supabase import create_client
         _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -89,26 +91,27 @@ def create_campaign(name="", niche="", region="", source="", criteria="", min_sc
     }
     
     supabase = get_connection()
+    # Try to insert into Supabase if available
     if not _use_local and supabase:
         try:
             res = supabase.table("campaigns").insert(data).execute()
             if res.data:
                 cid = res.data[0]["id"]
                 data["id"] = cid
-                db = _load_local_db()
-                db["campaigns"].insert(0, data)
-                _save_local_db(db)
-                return cid
         except Exception as e:
             print(f"[DB Error] create_campaign Supabase: {e}")
-
-    # Fallback for local JSON
-    cid = (int(time.time() * 10) + random.randint(1, 999)) % 2000000000
-    data["id"] = cid
+    # Always persist campaign locally
     db = _load_local_db()
+    # Generate a local ID if not set by Supabase
+    if "id" not in data:
+        import time, random
+        data["id"] = (int(time.time() * 10) + random.randint(1, 999)) % 2000000000
+    # Remove any existing campaign with same ID to avoid duplicates
+    db["campaigns"] = [c for c in db.get("campaigns", []) if str(c.get("id")) != str(data["id"])]
     db["campaigns"].insert(0, data)
     _save_local_db(db)
-    return cid
+    return data["id"]
+
 
 
 def update_campaign_stats(campaign_id, total_found=0, total_approved=0, total_discarded=0, status="running", status_message=None, **kwargs):
@@ -165,7 +168,6 @@ def delete_campaign(campaign_id):
     if not _use_local and supabase:
         _safe_execute(lambda: supabase.table("campaigns").delete().eq("id", norm_id).execute())
         _safe_execute(lambda: supabase.table("leads").delete().eq("campaign_id", norm_id).execute())
-        return
 
     db = _load_local_db()
     db["campaigns"] = [c for c in db.get("campaigns", []) if str(c.get("id")) != str(campaign_id)]
@@ -257,11 +259,16 @@ def get_setting(key, default=""):
     if not _use_local and supabase:
         response = _safe_execute(lambda: supabase.table("settings").select("value").eq("key", key).execute())
         if response and response.data:
-            return response.data[0]["value"]
+            val = response.data[0]["value"]
+            if key == "gemini_api_key" and ("AIzaSyBpoZ" in str(val) or not val):
+                return DEFAULT_GEMINI_KEY
+            return val
 
     db = _load_local_db()
     val = db.get("settings", {}).get(key, "")
     if val:
+        if key == "gemini_api_key" and ("AIzaSyBpoZ" in str(val) or not val):
+            return DEFAULT_GEMINI_KEY
         return val
 
     if key == "gemini_api_key" and DEFAULT_GEMINI_KEY:
