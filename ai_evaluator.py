@@ -223,7 +223,7 @@ Exemplo:
 """
     try:
         client = genai.Client(api_key=api_key)
-        response = _call_gemini_with_retry(client, prompt, model="gemini-3.5-flash", response_mime_type="application/json")
+        response = _call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite", response_mime_type="application/json")
         
         text = response.text.strip()
         data = json.loads(text)
