@@ -9,8 +9,8 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-3.5-flash-lite", response_mime_type=None):
-    models_to_try = [model, "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]
+def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-3.6-flash", response_mime_type=None):
+    models_to_try = [model, "gemini-3.6-flash", "gemini-3.5-flash-lite"]
     # De-duplicate while preserving order
     models_to_try = list(dict.fromkeys([m for m in models_to_try if m]))
     
@@ -223,7 +223,7 @@ Exemplo:
 """
     try:
         client = genai.Client(api_key=api_key)
-        response = _call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite", response_mime_type="application/json")
+        response = _call_gemini_with_retry(client, prompt, model="gemini-3.6-flash", response_mime_type="application/json")
         
         text = response.text.strip()
         data = json.loads(text)
