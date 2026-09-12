@@ -44,9 +44,9 @@ def read_root():
 @app.get("/api/version")
 def get_version():
     return {
-        "version": "4.1.0", 
-        "build": "2026-09-07T14:38", 
-        "engine": "velli-precision-v4"
+        "version": "4.2.0", 
+        "build": "2026-09-12T17:10", 
+        "engine": "velli-precision-v4-persistence-fix"
     }
 
 @app.get("/api/debug-scrape")
