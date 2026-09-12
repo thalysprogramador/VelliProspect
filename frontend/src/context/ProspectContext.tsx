@@ -154,7 +154,7 @@ export function ProspectProvider({ children }: { children: React.ReactNode }) {
       
       if (res.ok) {
         const data = await res.json();
-        const cid = data.campaign?.id ? String(data.campaign.id) : null;
+        const cid = data.id ? String(data.id) : (data.campaign?.id ? String(data.campaign.id) : null);
         setCampaignId(cid);
         
         if (data.status === "completed" && cid) {
