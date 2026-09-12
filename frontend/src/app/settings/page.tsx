@@ -10,23 +10,16 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
 
-  // Chave padrão como fallback imediato
-  const DEFAULT_KEY = "AIzaSyBpoZCXXetdIOzUCSUPN-P1wY9DsbxaJ1I";
-
   useEffect(() => {
-    // Setar a chave padrão imediatamente enquanto busca do servidor
-    setApiKey(DEFAULT_KEY);
-    
     fetch("https://velli-prospect.onrender.com/api/settings/gemini_api_key")
       .then(r => r.json())
       .then(data => {
-        if (data.value) {
+        if (data && data.value) {
           setApiKey(data.value);
         }
         setFetching(false);
       })
       .catch(() => {
-        // Mantém a chave padrão se o servidor não responder
         setFetching(false);
       });
   }, []);
