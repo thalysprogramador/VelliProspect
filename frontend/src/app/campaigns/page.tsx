@@ -14,7 +14,7 @@ export default function Campaigns() {
   useEffect(() => {
     fetch("https://velli-prospect.onrender.com/api/campaigns")
       .then(r => r.json())
-      .then(data => { setCampaigns(data); setLoading(false); })
+      .then(data => { setCampaigns(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -24,7 +24,7 @@ export default function Campaigns() {
     try {
       const r = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${cid}/leads`);
       const data = await r.json();
-      setLeads(data);
+      setLeads(Array.isArray(data) ? data : []);
     } catch {}
     setLoading(false);
   };
@@ -123,8 +123,10 @@ export default function Campaigns() {
                     onClick={async (e) => {
                       e.stopPropagation();
                       if(!confirm("Deseja realmente excluir esta campanha?")) return;
-                      await fetch(`https://velli-prospect.onrender.com/api/campaigns/${c.id}`, { method: "DELETE" });
-                      setCampaigns(campaigns.filter(camp => camp.id !== c.id));
+                      try {
+                        const res = await fetch(`https://velli-prospect.onrender.com/api/campaigns/${c.id}`, { method: "DELETE" });
+                        if (res.ok) setCampaigns(campaigns.filter(camp => camp.id !== c.id));
+                      } catch {}
                     }}
                     className="p-2 text-gray-500 hover:bg-red-500/20 hover:text-red-400 rounded-full transition-colors"
                   >
