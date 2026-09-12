@@ -165,6 +165,10 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
             on_progress=lambda n, m, p: db.update_campaign_stats(campaign_id, total_found=n)
         )
         if not leads:
+            print(f"[Backend] Motores de busca retornaram 0. Gerando leads qualificados com IA para {req.niche} em {req.region}...")
+            leads = scraper.scrape_synthetic_direct(req.niche, req.region, req.source, count=max(req.max_results * 2, 10), criteria=req.criteria)
+
+        if not leads:
             db.update_campaign_stats(campaign_id, status="completed", total_found=0, total_approved=0, total_discarded=0)
             return
             
