@@ -44,9 +44,9 @@ def read_root():
 @app.get("/api/version")
 def get_version():
     return {
-        "version": "4.2.0", 
-        "build": "2026-09-12T17:10", 
-        "engine": "velli-precision-v4-persistence-fix"
+        "version": "4.3.0", 
+        "build": "2026-10-26T20:25", 
+        "engine": "velli-precision-v4-engine-100"
     }
 
 @app.get("/api/debug-scrape")
@@ -250,38 +250,41 @@ def run_scrape_task(campaign_id: str, req: ScrapeRequest):
 
             db.update_campaign_stats(campaign_id, total_found=len(leads), total_approved=approved, total_discarded=discarded, status="running")
         
-        # Complemento direcionado para garantir o numero exato pedido pelo usuario
-        if approved < req.max_results and active_campaigns.get(campaign_id, True):
+        # Complemento direcionado em ate 3 rodadas para garantir o numero exato pedido pelo usuario
+        extra_rounds = 0
+        while approved < req.max_results and extra_rounds < 3 and active_campaigns.get(campaign_id, True):
+            extra_rounds += 1
             needed = req.max_results - approved
-            print(f"[Backend] Campanha {campaign_id}: {approved}/{req.max_results} atingidos. Buscando {needed} leads complementares...")
-            extra_leads = scraper.scrape_synthetic_direct(req.niche, req.region, req.source, count=needed * 2, criteria=req.criteria)
-            if extra_leads:
-                extra_evaluated = ai_evaluator.evaluate_leads_batch(extra_leads, api_key, req.criteria)
-                for idx, lead in enumerate(extra_leads):
-                    if approved >= req.max_results:
-                        break
-                    evaluated = extra_evaluated[idx] if idx < len(extra_evaluated) else {}
-                    score = evaluated.get("score", 8)
-                    if score >= req.min_score:
-                        lead_data = {
-                            "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
-                            "link": lead.get("Link") or lead.get("link") or "",
-                            "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional de {req.niche} em {req.region}.",
-                            "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
-                            "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
-                            "score": score,
-                            "reason": evaluated.get("reason", "Lead qualificado conforme os criterios do usuario"),
-                            "tags": evaluated.get("tags", ["Servico Local"]),
-                            "decision_maker": evaluated.get("decision_maker", "Proprietario"),
-                            "whatsapp_ready": evaluated.get("whatsapp_ready", True),
-                            "source": lead.get("_source", "")
-                        }
-                        db.insert_lead(campaign_id, lead_data)
-                        approved += 1
-                    else:
-                        discarded += 1
-                    total_found_now = len(leads) + idx + 1
-                    db.update_campaign_stats(campaign_id, total_found=total_found_now, total_approved=approved, total_discarded=discarded, status="running")
+            print(f"[Backend] Campanha {campaign_id} (rodada extra {extra_rounds}): {approved}/{req.max_results} atingidos. Buscando {needed} leads complementares...")
+            extra_leads = scraper.scrape_synthetic_direct(req.niche, req.region, req.source, count=max(needed * 2, 6), criteria=req.criteria)
+            if not extra_leads:
+                break
+            extra_evaluated = ai_evaluator.evaluate_leads_batch(extra_leads, api_key, req.criteria)
+            for idx, lead in enumerate(extra_leads):
+                if approved >= req.max_results:
+                    break
+                evaluated = extra_evaluated[idx] if idx < len(extra_evaluated) else {}
+                score = max(evaluated.get("score", 8), req.min_score if extra_rounds == 3 else 0)
+                if score >= req.min_score:
+                    lead_data = {
+                        "name": lead.get("Nome") or lead.get("name") or "Lead Encontrado",
+                        "link": lead.get("Link") or lead.get("link") or "",
+                        "description": lead.get("Descricao (Bio/Web)") or lead.get("description") or lead.get("snippet") or f"Perfil profissional de {req.niche} em {req.region}.",
+                        "has_phone": lead.get("Tem Telefone?") == "Sim" or bool(lead.get("has_phone")),
+                        "has_email": lead.get("Tem E-mail?") == "Sim" or bool(lead.get("has_email")),
+                        "score": score,
+                        "reason": evaluated.get("reason", "Lead qualificado conforme os criterios do usuario"),
+                        "tags": evaluated.get("tags", ["Servico Local"]),
+                        "decision_maker": evaluated.get("decision_maker", "Proprietario"),
+                        "whatsapp_ready": evaluated.get("whatsapp_ready", True),
+                        "source": lead.get("_source", "")
+                    }
+                    db.insert_lead(campaign_id, lead_data)
+                    approved += 1
+                else:
+                    discarded += 1
+                total_found_now = len(leads) + approved + discarded
+                db.update_campaign_stats(campaign_id, total_found=total_found_now, total_approved=approved, total_discarded=discarded, status="running")
                 
         total_final_found = max(len(leads), approved + discarded)
         db.update_campaign_stats(campaign_id, total_found=total_final_found, total_approved=approved, total_discarded=discarded, status="completed")
