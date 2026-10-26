@@ -53,21 +53,10 @@ def get_version():
 def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
     import traceback
     try:
-        q = f"{niche} {region} contato telefone"
-        
-        # Test DDG lite directly
-        import requests
-        url = 'https://lite.duckduckgo.com/lite/'
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.post(url, data={'q': q}, headers=headers, timeout=10)
-        html = r.text[:1000]
-
-        res_lite = scraper._ddg_lite_search(q, 5)
-        leads = scraper.scrape_leads(niche=niche, region=region, sources=["maps"], max_results=5)
+        leads = scraper.scrape_leads(niche=niche, region=region, sources=["maps", "instagram"], max_results=5)
         return {
-            "status": "ok", 
-            "lite_html": html,
-            "ddg_lite_raw": res_lite,
+            "status": "ok",
+            "leads_count": len(leads),
             "leads": leads
         }
     except Exception as e:
