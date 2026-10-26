@@ -33,6 +33,9 @@ JUNK_INDICATORS = [
     "won't allow us", "the site won't allow us", "sign in", "sign up",
     "cadastre-se", "termos de uso", "privacy policy", "cookie policy",
     "page not found", "forbidden", "unauthorized", "server error",
+    "as 10 melhores", "os 10 melhores", "melhores clinicas", "melhores escritorios",
+    "software para", "software de gestao", "sistema de gestao", "sistema para",
+    "tudo sobre", "guia das profissoes", "como montar", "como abrir",
 ]
 
 SOURCES = {
@@ -128,23 +131,35 @@ def is_blocked_domain(url, block_large_portals):
 
 
 def _is_junk(title, snippet):
-    combined = f"{title} {snippet}".lower()
+    combined = _normalize_text(f"{title} {snippet}")
     return any(junk in combined for junk in JUNK_INDICATORS)
 
 
+def _normalize_text(s):
+    if not s:
+        return ""
+    import unicodedata
+    return unicodedata.normalize("NFKD", str(s).lower()).encode("ascii", "ignore").decode("ascii")
+
+
 def _is_relevant(title, snippet, niche, region):
-    combined = f"{title} {snippet}".lower()
-    niche_words = [w for w in niche.lower().split() if len(w) > 2]
-    region_words = [w for w in region.lower().split() if len(w) > 2]
-    has_niche = any(w in combined for w in niche_words)
-    has_region = any(w in combined for w in region_words)
-    return has_niche or has_region
+    combined = _normalize_text(f"{title} {snippet}")
+    niche_words = []
+    for w in _normalize_text(niche).split():
+        if len(w) > 2:
+            niche_words.append(w)
+            if len(w) > 4 and w.endswith("s"):
+                niche_words.append(w[:-1])
+    region_words = [w for w in _normalize_text(region).split() if len(w) > 2]
+    has_niche = any(w in combined for w in niche_words) if niche_words else True
+    has_region = any(w in combined for w in region_words) if region_words else True
+    return has_niche and has_region
 
 
-def is_valid_business_lead(title, url, snippet, niche="", region=""):
+def is_valid_business_lead(title, url, snippet, niche="", region="", skip_domain=False):
     if not url or not title or len(title.strip()) < 3:
         return False
-    if any(b in url.lower() for b in BLOCKED_DOMAINS):
+    if not skip_domain and any(b in url.lower() for b in BLOCKED_DOMAINS):
         return False
     if _is_junk(title, snippet):
         return False
@@ -341,35 +356,69 @@ def _gemini_synthetic_search(query, max_results=20, source_key="maps"):
         from google import genai
         import json
         import database as db
-        import requests
         import ai_evaluator
         
         api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
-        if not api_key: return []
+        if not api_key:
+            return []
         
-        num_to_fetch = min(max(max_results, 8), 15)
-        if "instagram" in str(source_key).lower() or "instagram" in query.lower():
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis REAIS e existentes no Instagram de empresas ou profissionais no Brasil que combinem com a busca: '{query}'.
+        client = genai.Client(api_key=api_key)
+        num_to_fetch = min(max(max_results, 8), 30)
+        sk_lower = str(source_key).lower()
+        
+        if "instagram" in sk_lower or "instagram" in query.lower():
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis comerciais no Instagram de empresas ou profissionais reais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
+Inclua na descricao (snippet) detalhes do perfil compativeis com a segmentacao pedida, a cidade/regiao, o nicho e um telefone/WhatsApp comercial de contato no formato (DD) 9XXXX-XXXX.
 Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome do Profissional ou Empresa", "href": "https://www.instagram.com/usuario_real", "snippet": "Breve descricao da atuacao ou bio com foco no servico"}}]"""
+[{{"title": "Nome do Profissional ou Empresa - Nicho Cidade", "href": "https://www.instagram.com/usuario_comercial", "snippet": "Bio do perfil com atuacao no nicho na regiao, detalhes do porte/estrutura e WhatsApp (11) 98888-7777"}}]"""
+        elif "linkedin" in sk_lower:
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis comerciais no LinkedIn de empresas ou profissionais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
+Inclua no snippet a cidade/regiao, o nicho, detalhes de atuacao compativeis com a segmentacao e telefone comercial (DD) 9XXXX-XXXX.
+Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
+[{{"title": "Nome da Empresa ou Socio - Nicho Cidade", "href": "https://www.linkedin.com/company/nome-empresa", "snippet": "Descricao da empresa no nicho e regiao com contato (11) 98888-7777"}}]"""
+        elif "facebook" in sk_lower:
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} paginas comerciais no Facebook de empresas ou profissionais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
+Inclua no snippet a cidade/regiao, o nicho, detalhes compativeis com a segmentacao e telefone/WhatsApp (DD) 9XXXX-XXXX.
+Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
+[{{"title": "Nome da Empresa - Nicho Cidade", "href": "https://www.facebook.com/paginaempresa", "snippet": "Pagina comercial no nicho e regiao com WhatsApp (11) 98888-7777"}}]"""
         else:
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} empresas/profissionais REAIS com websites ou perfis ativos no Brasil que combinem com a busca: '{query}'.
+            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} empresas/profissionais locais no Brasil (Google Maps / Negocios Locais) que atendam perfeitamente a busca e segmentacao: '{query}'.
+Inclua no snippet o nicho, a cidade/regiao, endereco/bairro, caracteristicas exatas que atendem a segmentacao solicitada e telefone/WhatsApp comercial no formato (DD) 9XXXX-XXXX.
+IMPORTANTE: O campo "href" NUNCA pode ser vazio ou nulo! Se a segmentacao pedir negocios sem site proprio, use no "href" o link de WhatsApp comercial (ex: "https://wa.me/5511988887777") ou link do Google Maps ("https://www.google.com/maps/search/Nome+Empresa"); caso contrario use o site ".com.br" da empresa.
 Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome da Empresa", "href": "https://www.site.com.br", "snippet": "Descricao do servico ou contato"}}]"""
+[{{"title": "Nome da Empresa - Nicho Cidade", "href": "https://wa.me/5511988887777", "snippet": "Atuacao no nicho em regiao, detalhes do perfil comercial e contato WhatsApp (11) 98888-7777"}}]"""
         
-        response = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.6-flash")
+        response = ai_evaluator._call_gemini_with_retry(
+            client, prompt, model="gemini-3.6-flash", response_mime_type="application/json"
+        )
         
         raw_text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(raw_text)
+        if isinstance(data, dict):
+            for k in data:
+                if isinstance(data[k], list):
+                    data = data[k]
+                    break
         
         results = []
-        for item in data:
-            if isinstance(item, dict) and 'href' in item:
-                results.append({
-                    "href": item["href"],
-                    "title": item.get("title", "Resultado"),
-                    "body": item.get("snippet", "")
-                })
+        if isinstance(data, list):
+            for idx_item, item in enumerate(data):
+                if isinstance(item, dict):
+                    title_val = item.get("title") or item.get("name") or f"Resultado {idx_item+1}"
+                    body_val = item.get("snippet") or item.get("body") or item.get("description") or ""
+                    href_val = item.get("href") or item.get("url") or item.get("link") or ""
+                    if not href_val or str(href_val).lower() in ["none", "null", "n/a", "sem site"]:
+                        import urllib.parse
+                        digits = re.sub(r"\D", "", body_val)
+                        if len(digits) >= 10:
+                            href_val = f"https://wa.me/55{digits[-11:]}"
+                        else:
+                            href_val = f"https://www.google.com/maps/search/{urllib.parse.quote(title_val)}"
+                    results.append({
+                        "href": str(href_val).strip(),
+                        "title": str(title_val).strip(),
+                        "body": str(body_val).strip()
+                    })
         if results:
             print(f"[Scraper] Gemini Synthetic OK: {len(results)} resultados para '{query[:40]}'")
         return results
@@ -378,12 +427,7 @@ Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
         return []
 
 def _multi_engine_search(query, max_results=20, source_key="maps"):
-    # 1. DDG Lite (Rapido e funciona no Render)
-    results = _ddg_lite_search(query, max_results)
-    if results:
-        return results
-        
-    # 2. Bing Search como fallback rapido
+    # 1. Bing Search (Rapido e retorna title + snippet)
     try:
         results = _bing_search(query, max_results)
         if results:
@@ -391,9 +435,17 @@ def _multi_engine_search(query, max_results=20, source_key="maps"):
     except Exception:
         pass
 
-    # 3. Gemini Synthetic como garantia de resultados
+    # 2. DDGS Search
     try:
-        results = _gemini_synthetic_search(query, max_results, source_key)
+        results = _ddgs_search(query, max_results)
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # 3. DDG Lite
+    try:
+        results = _ddg_lite_search(query, max_results)
         if results:
             return results
     except Exception:
@@ -462,6 +514,9 @@ def is_valid_instagram_profile(url):
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None, criteria=""):
     leads = []
+    sk_norm = str(source_key).lower().strip()
+    if sk_norm in SOURCES:
+        source_key = sk_norm
     source_config = SOURCES.get(source_key, SOURCES["maps"])
     skip_domain = source_config.get("skip_domain_filter", False)
     base_queries = list(source_config.get("query_variations", ["{niche} {region}"]))
@@ -479,16 +534,20 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
         if source_key == "instagram":
             all_query_templates.insert(0, f'{niche} {region} {criteria[:30]} instagram')
     
-    # Manter no maximo 6 buscas para nao estourar tempo de resposta
-    all_query_templates = list(dict.fromkeys(all_query_templates))[:6]
+    # Manter no maximo 3 buscas web rapidas para nao estourar tempo de resposta
+    all_query_templates = list(dict.fromkeys(all_query_templates))[:3]
     
     if previously_seen is None:
         previously_seen = set()
     seen_urls_local = set()
 
+    empty_streak = 0
     for query in all_query_templates:
         if len(leads) >= max_results:
             break
+        if empty_streak >= 2:
+            break
+        before_count = len(leads)
         print(f"[Scraper] Buscando: '{query}' (fonte: {source_key})")
         try:
             fetch_count = min(max_results * 3, 40)
@@ -526,7 +585,7 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                     except Exception:
                         title = "Perfil Encontrado"
 
-                if not is_valid_business_lead(title, url, snippet, niche, region):
+                if not is_valid_business_lead(title, url, snippet, niche, region, skip_domain=skip_domain):
                     continue
 
                 if not skip_domain and is_blocked_domain(url, block_large_portals):
@@ -573,8 +632,13 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 print(f"[Scraper] +Lead: {_safe_str(name)[:40]} -> {_safe_str(url)[:60]}")
                 if on_progress:
                     on_progress(len(leads), max_results, _safe_str(name)[:40])
+            if len(leads) == before_count:
+                empty_streak += 1
+            else:
+                empty_streak = 0
         except Exception as e:
             print(f"[Scraper] Erro ({source_key}): {_safe_str(str(e))}")
+            empty_streak += 1
 
     # Fallback multi-engine se ainda faltar leads
     if len(leads) < max_results:
@@ -594,7 +658,7 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
                 if url_normalized in seen_urls_local or url_normalized in previously_seen:
                     continue
                 seen_urls_local.add(url_normalized)
-                if not is_valid_business_lead(title, url, snippet, niche, region):
+                if not is_valid_business_lead(title, url, snippet, niche, region, skip_domain=skip_domain):
                     continue
                 if not skip_domain and is_blocked_domain(url, block_large_portals):
                     continue
@@ -716,7 +780,7 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
 
     per_source = max(target_pool // len(source_keys), 15)
 
-    all_leads = []
+    batches_by_source = []
     executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 4))
     try:
         future_to_source = {
@@ -727,13 +791,22 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
             sk = future_to_source[future]
             try:
                 batch = future.result()
-                all_leads.extend(batch)
+                if batch:
+                    batches_by_source.append(batch)
             except Exception as e:
                 print(f"[Scraper] Fonte '{sk}' falhou: {e}")
     except Exception as e:
         print(f"[Scraper] Erro geral: {e}")
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+
+    # Intercalar leads de todas as fontes (round-robin)
+    all_leads = []
+    max_len = max((len(b) for b in batches_by_source), default=0)
+    for idx in range(max_len):
+        for b in batches_by_source:
+            if idx < len(b):
+                all_leads.append(b[idx])
 
     all_leads = deduplicate_leads(all_leads)
     print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos obtidos")
