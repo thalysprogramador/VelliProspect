@@ -9,38 +9,30 @@ import time
 def _friendly_rate_limit_msg():
     return "O limite de uso gratuito da sua chave foi atingido. Tente novamente em 1 minuto!"
 
-def _call_gemini_with_retry(client, prompt, max_retries=2, model="gemini-3.6-flash", response_mime_type=None):
-    models_to_try = [model, "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+def _call_gemini_with_retry(client, prompt, max_retries=1, model="gemini-3.5-flash-lite", response_mime_type=None):
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", model]
     # De-duplicate while preserving order
     models_to_try = list(dict.fromkeys([m for m in models_to_try if m]))
     
-    delays = [1, 2]
     last_err = None
     
     for m in models_to_try:
-        for attempt in range(max_retries):
-            try:
-                config = {"temperature": 0.1}
-                if response_mime_type:
-                    config["response_mime_type"] = response_mime_type
-                    
-                res = client.models.generate_content(
-                    model=m,
-                    contents=prompt,
-                    config=config
-                )
-                if res and res.text:
-                    return res
-            except Exception as e:
-                last_err = e
-                err_str = str(e).lower()
-                print(f"[AIEvaluator] Modelo {m} tentativa {attempt+1} falhou: {e}")
-                if "quota exceeded" in err_str or "limit: 20" in err_str or "daily" in err_str:
-                    break
-                if any(err in err_str for err in ["429", "resource_exhausted", "overloaded", "503", "500", "504", "timeout", "deadline"]):
-                    time.sleep(delays[min(attempt, len(delays)-1)])
-                    continue
-                break
+        try:
+            config = {"temperature": 0.1}
+            if response_mime_type:
+                config["response_mime_type"] = response_mime_type
+                
+            res = client.models.generate_content(
+                model=m,
+                contents=prompt,
+                config=config
+            )
+            if res and res.text:
+                return res
+        except Exception as e:
+            last_err = e
+            print(f"[AIEvaluator] Modelo {m} falhou ({type(e).__name__}): {str(e)[:120]} -> tentando proximo modelo...")
+            continue
                 
     raise Exception(f"Falha em todos os modelos disponiveis da IA: {last_err}")
 
