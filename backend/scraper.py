@@ -442,14 +442,6 @@ def _multi_engine_search(query, max_results=20, source_key="maps"):
             return results
     except Exception:
         pass
-
-    # 3. DDG Lite
-    try:
-        results = _ddg_lite_search(query, max_results)
-        if results:
-            return results
-    except Exception:
-        pass
         
     return []
 
