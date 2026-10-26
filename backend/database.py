@@ -7,8 +7,8 @@ import json
 from datetime import datetime
 
 # === Supabase Config ===
-SUPABASE_URL = "https://emsejcohbjtymxtahnyb.supabase.co"
-SUPABASE_KEY = "sb_publishable_r4Q2eU0K5gL6u6YoeuXCEw_fbJZfFnz"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 import tempfile
 import base64
@@ -23,7 +23,7 @@ _ENC_KEY = b"QVEuQWI4Uk42SW1pYXJsdXJJREhPQzN3TFFXM3VUU3BQYVVHaGd3eHQyV0RvVTh4S3h
 DEFAULT_GEMINI_KEY = os.environ.get("GEMINI_DEFAULT_KEY") or base64.b64decode(_ENC_KEY).decode("utf-8")
 
 _supabase = None
-_use_local = False
+_use_local = not bool(SUPABASE_URL and SUPABASE_KEY)
 
 def _load_local_db():
     for p in [LOCAL_DB_PATH, TMP_DB_PATH]:
@@ -198,6 +198,7 @@ def insert_lead(campaign_id, lead_data):
         "tags": lead_data.get("tags", []),
         "decision_maker": str(lead_data.get("decision_maker", "")),
         "whatsapp_ready": bool(lead_data.get("whatsapp_ready")),
+        "source": str(lead_data.get("source", "")),
         "status": "approved",
         "created_at": datetime.now().isoformat(),
     }
