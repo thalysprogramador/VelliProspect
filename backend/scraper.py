@@ -26,6 +26,7 @@ BLOCKED_DOMAINS = [
     "twitter.com", "x.com", "gov.br", "jus.br", "phhmortgage.com",
     "bing.com", "google.com", "duckduckgo.com", "econodata.com.br",
     "guiapj.com.br", "cnpj.biz", "casadosdados.com.br", "solutudo.com.br",
+    "cylex.com.br", "polomap.com", "inddex.com.br", "cnpja.com", "codycrossanswers.com",
 ]
 
 JUNK_INDICATORS = [
@@ -267,20 +268,26 @@ def _bing_search(query, max_results=20):
 
 def _ddgs_search(query, max_results=20):
     try:
+        from ddgs import DDGS
+    except ImportError:
+        from duckduckgo_search import DDGS
+
+    for attempt in range(2):
         try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS
-        results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results, region="br-pt"):
-                results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
-        if results:
-            print(f"[Scraper] DDGS OK: {len(results)} resultados para '{_safe_str(query)[:50]}'")
-        return results
-    except Exception as e:
-        print(f"[Scraper] DDGS falhou: {e}")
-        return []
+            results = []
+            with DDGS() as ddgs:
+                for r in ddgs.text(query, max_results=max_results, region="br-pt", backend="yandex"):
+                    href = r.get("href") or ""
+                    if "codycrossanswers.com" in href or "support.google.com" in href:
+                        continue
+                    results.append({"href": href, "title": r.get("title"), "body": r.get("body")})
+            if results:
+                print(f"[Scraper] DDGS (yandex) OK: {len(results)} resultados para '{_safe_str(query)[:50]}'")
+                return results
+        except Exception as e:
+            if attempt == 1:
+                print(f"[Scraper] DDGS (yandex) falhou: {e}")
+    return []
 
 
 def _generate_smart_queries(niche, region, source_key, criteria=""):
@@ -317,7 +324,7 @@ Retorne APENAS um JSON array de strings com as buscas. Exemplo: ["termo 1", "ter
 
 
 def _multi_engine_search(query, max_results=20, source_key="maps"):
-    # 1. DDGS Search (region="br-pt") - Retorna URLs reais e geolocalizadas no Brasil
+    # 1. DDGS Search (backend="yandex") - Imune a bloqueio/honeypot de IPs de datacenter AWS/Render
     try:
         results = _ddgs_search(query, max_results)
         if results:
@@ -328,14 +335,6 @@ def _multi_engine_search(query, max_results=20, source_key="maps"):
     # 2. Google Search (fallback)
     try:
         results = _google_search_engine(query, max_results)
-        if results:
-            return results
-    except Exception:
-        pass
-
-    # 3. Bing Search (ultimo recurso)
-    try:
-        results = _bing_search(query, max_results)
         if results:
             return results
     except Exception:
