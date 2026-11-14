@@ -43,13 +43,13 @@ JUNK_INDICATORS = [
 SOURCES = {
     "instagram": {
         "query_variations": [
+            '{niche} {region} instagram.com',
             'site:instagram.com {niche} {region}',
+            '{niche} em {region} instagram.com',
             'site:instagram.com "{niche}" "{region}"',
+            '{niche} {region} whatsapp instagram.com',
             'site:instagram.com {niche} {region} whatsapp',
             'site:instagram.com {niche} {region} contato',
-            'site:instagram.com {niche} em {region}',
-            'site:instagram.com clinica {niche} {region}',
-            'site:instagram.com escritorio {niche} {region}',
         ],
         "skip_domain_filter": True,
     },
@@ -410,7 +410,7 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
 
     url_lower = url.lower()
 
-    # Caso 1: URL do Instagram (validacao real via OpenGraph TelegramBot)
+    # Caso 1: URL do Instagram (validacao real via OpenGraph TelegramBot + metadados reais DDGS)
     if "instagram.com" in url_lower:
         blocked_ig = [
             "/explore/", "/stories/", "/tags/", "/popular/", "/directory/",
@@ -419,96 +419,97 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
         ]
         if any(b in url_lower for b in blocked_ig):
             return None
+
+        # Limpar titulo do DDGS caso venha concatenado com "..."
+        ddgs_title = title.split("...")[0].strip() if "..." in title else title
+        has_ddgs_meta = bool(
+            ddgs_title
+            and "link to instagram" not in ddgs_title.lower()
+            and ddgs_title.lower().strip() != "instagram"
+            and snippet
+            and "the site owner hides" not in snippet.lower()
+        )
+
+        best_title = ""
+        og_desc = ""
+        og_url = ""
         try:
             headers = {
                 'User-Agent': 'TelegramBot (like TwitterBot)',
                 'Accept-Language': 'pt-BR,pt;q=0.9'
             }
-            r = requests.get(url, headers=headers, timeout=4.5, allow_redirects=True)
-            if r.status_code >= 400:
-                return None
-            soup = BeautifulSoup(r.text[:35000], 'html.parser')
+            r = requests.get(url, headers=headers, timeout=3.8, allow_redirects=True)
+            if r.status_code < 400:
+                soup = BeautifulSoup(r.text[:35000], 'html.parser')
 
-            def _meta(prop=None, name=None):
-                tag = soup.find('meta', property=prop) if prop else soup.find('meta', attrs={'name': name})
-                return tag.get('content', '').strip() if tag and tag.get('content') else ""
+                def _meta(prop=None, name=None):
+                    tag = soup.find('meta', property=prop) if prop else soup.find('meta', attrs={'name': name})
+                    return tag.get('content', '').strip() if tag and tag.get('content') else ""
 
-            og_title = _meta(prop='og:title')
-            tw_title = _meta(name='twitter:title')
-            og_desc = _meta(prop='og:description') or _meta(name='twitter:description')
-            og_url = _meta(prop='og:url')
-
-            best_title = tw_title or og_title
-            # Se nao houver og:title nem twitter:title, o perfil/post NAO EXISTE no Instagram!
-            if not best_title or best_title.lower().strip() in ["instagram", "login \u2022 instagram", "entrar \u2022 instagram"]:
-                return None
-
-            # Extrair @handle se for post (/p/, /reel/, /tv/) ou confirmar handle do perfil
-            handle = None
-            m_url = re.search(r"instagram\.com/([a-zA-Z0-9._]{2,30})/(?:p|reel|reels|tv)/", og_url or url, re.IGNORECASE)
-            if m_url:
-                handle = m_url.group(1)
-            if not handle:
-                m_title = re.search(r"\(@([a-zA-Z0-9._]{2,30})\)", best_title)
-                if m_title:
-                    handle = m_title.group(1)
-            if not handle:
-                m_desc = re.search(r"-\s*([a-zA-Z0-9._]{2,30})\s+on\s+", og_desc or "")
-                if m_desc:
-                    handle = m_desc.group(1)
-            if not handle:
-                parts = [p for p in urlparse(url.split("?")[0].split("#")[0]).path.split("/") if p]
-                if len(parts) == 1 and re.match(r"^[a-zA-Z0-9._]{2,30}$", parts[0]):
-                    handle = parts[0]
-
-            reserved_handles = {
-                "p", "reel", "reels", "explore", "stories", "tv", "tags",
-                "popular", "directory", "accounts", "about", "legal", "help",
-                "developer", "privacy", "topics", "instagram"
-            }
-            if not handle or handle.lower() in reserved_handles:
-                return None
-
-            # Converter sempre para o link limpo do perfil comercial
-            profile_url = f"https://www.instagram.com/{handle}"
-            if not is_valid_instagram_profile(profile_url):
-                return None
-
-            # Se veio de um post/reel, consultar rapidamente o perfil tambem para pegar seguidores + nome de exibicao
-            profile_stats = ""
-            if any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/tv/"]):
-                try:
-                    rp = requests.get(profile_url + "/", headers=headers, timeout=3.5)
-                    if rp.status_code == 200:
-                        sp = BeautifulSoup(rp.text[:25000], 'html.parser')
-                        p_title_tag = sp.find('meta', property='og:title') or sp.find('meta', attrs={'name': 'twitter:title'})
-                        p_desc_tag = sp.find('meta', property='og:description')
-                        if p_title_tag and p_title_tag.get('content'):
-                            best_title = p_title_tag.get('content').strip()
-                        if p_desc_tag and p_desc_tag.get('content'):
-                            profile_stats = p_desc_tag.get('content').strip().split(" - ")[0]
-                except Exception:
-                    pass
-
-            clean_desc_parts = []
-            if profile_stats:
-                clean_desc_parts.append(profile_stats)
-            if og_desc:
-                clean_desc_parts.append(og_desc)
-            if snippet and "the site owner hides" not in snippet.lower() and snippet not in (og_desc or ""):
-                clean_desc_parts.append(snippet)
-
-            final_snippet = " | ".join(clean_desc_parts).strip()
-            if not final_snippet or "the site owner hides" in final_snippet.lower():
-                final_snippet = f"Perfil comercial verificado (@{handle}) - {niche} em {region}."
-            elif _normalize_text(region) not in _normalize_text(f"{best_title} {final_snippet}"):
-                final_snippet = f"{final_snippet} | Atuação: {niche} ({region})"
-
-            title = best_title
-            url = profile_url
-            snippet = final_snippet[:500]
+                og_title = _meta(prop='og:title')
+                tw_title = _meta(name='twitter:title')
+                og_desc = _meta(prop='og:description') or _meta(name='twitter:description')
+                og_url = _meta(prop='og:url')
+                candidate_t = tw_title or og_title
+                if candidate_t and candidate_t.lower().strip() not in ["instagram", "login \u2022 instagram", "entrar \u2022 instagram"]:
+                    best_title = candidate_t
         except Exception:
+            pass
+
+        # Se o IP de datacenter (ex: Render AWS) sofrer rate-limit do Instagram no request direto,
+        # aproveita os metadados reais indexados pelo DDGS quando ja vierem completos
+        if not best_title:
+            if has_ddgs_meta and is_valid_instagram_profile(url):
+                best_title = ddgs_title
+                og_desc = snippet
+            else:
+                return None
+
+        # Extrair @handle se for post (/p/, /reel/, /tv/) ou confirmar handle do perfil
+        handle = None
+        m_url = re.search(r"instagram\.com/([a-zA-Z0-9._]{2,30})/(?:p|reel|reels|tv)/", og_url or url, re.IGNORECASE)
+        if m_url:
+            handle = m_url.group(1)
+        if not handle:
+            m_title = re.search(r"\(@([a-zA-Z0-9._]{2,30})\)", f"{best_title} {og_desc} {snippet}")
+            if m_title:
+                handle = m_title.group(1)
+        if not handle:
+            m_desc = re.search(r"-\s*([a-zA-Z0-9._]{2,30})\s+on\s+", og_desc or "")
+            if m_desc:
+                handle = m_desc.group(1)
+        if not handle:
+            parts = [p for p in urlparse(url.split("?")[0].split("#")[0]).path.split("/") if p]
+            if len(parts) == 1 and re.match(r"^[a-zA-Z0-9._]{2,30}$", parts[0]):
+                handle = parts[0]
+
+        reserved_handles = {
+            "p", "reel", "reels", "explore", "stories", "tv", "tags",
+            "popular", "directory", "accounts", "about", "legal", "help",
+            "developer", "privacy", "topics", "instagram"
+        }
+        if not handle or handle.lower() in reserved_handles:
             return None
+
+        profile_url = f"https://www.instagram.com/{handle}"
+        if not is_valid_instagram_profile(profile_url):
+            return None
+
+        clean_desc_parts = []
+        if og_desc:
+            clean_desc_parts.append(og_desc)
+        if snippet and "the site owner hides" not in snippet.lower() and snippet not in (og_desc or ""):
+            clean_desc_parts.append(snippet)
+
+        final_snippet = " | ".join(clean_desc_parts).strip()
+        if not final_snippet or "the site owner hides" in final_snippet.lower():
+            final_snippet = f"Perfil comercial verificado (@{handle}) - {niche} em {region}."
+        elif _normalize_text(region) not in _normalize_text(f"{best_title} {final_snippet}"):
+            final_snippet = f"{final_snippet} | Atuação: {niche} ({region})"
+
+        title = best_title
+        url = profile_url
+        snippet = final_snippet[:500]
 
     # Caso 2: LinkedIn
     elif "linkedin.com" in url_lower:
@@ -661,7 +662,8 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     if criteria and criteria.strip():
         crit_short = criteria.strip()[:35]
         if source_key == "instagram":
-            all_query_templates.insert(0, f"site:instagram.com {niche} {region} {crit_short}")
+            all_query_templates.insert(2, f"{niche} {region} {crit_short} instagram.com")
+            all_query_templates.insert(3, f"site:instagram.com {niche} {region} {crit_short}")
         else:
             all_query_templates.insert(0, f"{niche} {region} {crit_short} telefone whatsapp")
 
