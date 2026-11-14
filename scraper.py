@@ -521,7 +521,8 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
                 best_title = ddgs_title
                 og_desc = snippet
             else:
-                best_title = _format_ig_handle_title(handle)
+                # Se o Instagram nao retornou og:title/twitter:title ao vivo, o perfil foi desativado ou nao existe
+                return None
 
         clean_desc_parts = []
         if og_desc:
