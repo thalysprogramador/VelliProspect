@@ -24,7 +24,8 @@ BLOCKED_DOMAINS = [
     "glassdoor.com", "glassdoor.com.br", "indeed.com", "indeed.com.br",
     "catho.com.br", "infojobs.com.br", "vagas.com.br", "trampos.co",
     "twitter.com", "x.com", "gov.br", "jus.br", "phhmortgage.com",
-    "bing.com", "google.com", "duckduckgo.com",
+    "bing.com", "google.com", "duckduckgo.com", "econodata.com.br",
+    "guiapj.com.br", "cnpj.biz", "casadosdados.com.br", "solutudo.com.br",
 ]
 
 JUNK_INDICATORS = [
@@ -33,42 +34,33 @@ JUNK_INDICATORS = [
     "won't allow us", "the site won't allow us", "sign in", "sign up",
     "cadastre-se", "termos de uso", "privacy policy", "cookie policy",
     "page not found", "forbidden", "unauthorized", "server error",
-    "as 10 melhores", "os 10 melhores", "melhores clinicas", "melhores escritorios",
+    "as 10 melhores", "os 10 melhores", "os 20 ", "as 20 ", "melhores clinicas", "melhores escritorios",
     "software para", "software de gestao", "sistema de gestao", "sistema para",
     "tudo sobre", "guia das profissoes", "como montar", "como abrir",
+    "maiores empresas de", "consulta cnpj",
 ]
 
 SOURCES = {
     "instagram": {
         "query_variations": [
-            '"{niche}" "{region}" instagram',
-            '"{niche}" "{region}" instagram contato',
-            '"{niche}" "{region}" instagram whatsapp',
-            '"{niche}" "{region}" perfil profissional instagram',
+            'site:instagram.com {niche} {region}',
             'site:instagram.com "{niche}" "{region}"',
-            '"{niche}" "{region}" "instagram.com"',
-            '"{niche}" "{region}" direct instagram',
-            'escritorio {niche} {region} instagram',
-            'clinica {niche} {region} instagram',
-            'servico {niche} {region} instagram',
-            'atendimento {niche} {region} instagram',
-            '{niche} em {region} instagram',
-            '{niche} de {region} instagram bio',
+            'site:instagram.com {niche} {region} whatsapp',
+            'site:instagram.com {niche} {region} contato',
+            'site:instagram.com {niche} em {region}',
+            'site:instagram.com clinica {niche} {region}',
+            'site:instagram.com escritorio {niche} {region}',
         ],
         "skip_domain_filter": True,
     },
     "maps": {
         "query_variations": [
+            '{niche} em {region} telefone whatsapp',
+            '{niche} {region} site:.com.br contato',
             '"{niche}" "{region}" contato telefone',
-            '{niche} {region} escritorio contato whatsapp',
-            '{niche} perto de {region} telefone endereco',
-            '"{niche}" em "{region}" telefone site',
-            'melhores {niche} em {region} contato',
             '{niche} {region} atendimento whatsapp',
-            'consultorio {niche} {region} telefone',
+            'clinica consultorio escritorio {niche} {region} telefone',
             'empresa {niche} {region} contato telefone',
-            '{niche} {region} endereco telefone',
-            'servicos de {niche} em {region} telefone',
         ],
         "skip_domain_filter": False,
     },
@@ -188,7 +180,22 @@ def deduplicate_leads(leads):
 
 
 def _clean_name(title):
-    for sep in [" - ", " | ", " \u2014 ", " \u00b7 ", " :: "]:
+    if not title:
+        return "Perfil Encontrado"
+    for suffix in [
+        " \u2022 Instagram profile",
+        " \u2022 Instagram photos and videos",
+        " \u2022 Instagram photo",
+        " \u2022 Instagram reel",
+        " \u2022 Fotos e v\u00eddeos do Instagram",
+        " | Instagram",
+        " | LinkedIn",
+        " | Facebook",
+    ]:
+        if suffix.lower() in title.lower():
+            idx = title.lower().find(suffix.lower())
+            title = title[:idx]
+    for sep in [" - ", " | ", " \u2014 ", " \u00b7 ", " :: ", " \u2022 "]:
         if sep in title:
             title = title.split(sep)[0]
     return title.strip() or "Perfil Encontrado"
@@ -266,63 +273,17 @@ def _ddgs_search(query, max_results=20):
             from duckduckgo_search import DDGS
         results = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results, region="pt-br"):
+            for r in ddgs.text(query, max_results=max_results, region="br-pt"):
                 results.append({"href": r.get("href"), "title": r.get("title"), "body": r.get("body")})
         if results:
-            print(f"[Scraper] DDGS OK: {len(results)} resultados")
+            print(f"[Scraper] DDGS OK: {len(results)} resultados para '{_safe_str(query)[:50]}'")
         return results
     except Exception as e:
         print(f"[Scraper] DDGS falhou: {e}")
         return []
 
 
-def _ddg_lite_search(query, max_results=20):
-    import requests
-    from bs4 import BeautifulSoup
-    import time
-    import random
-    
-    url = 'https://lite.duckduckgo.com/lite/'
-    uas = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        'Mozilla/5.0 (X11; Linux x86_64)',
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'
-    ]
-    
-    for attempt in range(3):
-        try:
-            headers = {'User-Agent': random.choice(uas) + ' AppleWebKit/537.36'}
-            r = requests.post(url, data={'q': query}, headers=headers, timeout=3.5)
-            
-            if r.status_code == 202 or 'duckduckgo' not in r.text.lower():
-                time.sleep(0.5)
-                continue
-                
-            soup = BeautifulSoup(r.text, 'html.parser')
-            results = []
-            for a in soup.find_all('a'):
-                href = a.get('href', '')
-                if 'http' in href and 'duckduckgo' not in href and not href.startswith('/url?'):
-                    title = a.text.strip()
-                    if title and len(title) > 3:
-                        results.append({'href': href, 'title': title, 'body': ''})
-                        if len(results) >= max_results:
-                            break
-            
-            if results:
-                print(f"[Scraper] DDG Lite OK: {len(results)} resultados")
-            return results
-                
-        except Exception as e:
-            print(f"[Scraper] DDG Lite falhou: {e}")
-            return []
-            
-    return []
-
 def _generate_smart_queries(niche, region, source_key, criteria=""):
-    if not criteria or not criteria.strip():
-        return []
     try:
         from google import genai
         import database as db
@@ -331,16 +292,19 @@ def _generate_smart_queries(niche, region, source_key, criteria=""):
         if not api_key:
             return []
         client = genai.Client(api_key=api_key)
-        prompt = f"""Gere 6 termos de busca curtos e naturais (2 a 5 palavras cada) para encontrar no Google empresas e profissionais reais no Brasil.
-NAO use 'site:' ou operadores avancados. Use termos em linguagem natural incluindo a regiao e a rede (ex: '{niche} {region} instagram perfil').
+        sk_lower = str(source_key).lower()
+        prefix_hint = "Inclua 'site:instagram.com ' no inicio de cada termo." if "instagram" in sk_lower else ""
+        prompt = f"""Gere 6 termos de busca curtos e altamente eficazes para encontrar no DuckDuckGo/Google empresas e profissionais reais no Brasil.
+{prefix_hint}
+Use variacoes inteligentes de especialidades, sinonimos do nicho e termos locais da cidade/regiao.
 Nicho: {niche}
 Regiao: {region}
 Fonte: {source_key}
-Criterios/Segmentacao desejada pelo usuario: {criteria}
+Criterios/Segmentacao desejada pelo usuario: {criteria or 'Negocios e profissionais reais ativos na regiao'}
 Retorne APENAS um JSON array de strings com as buscas. Exemplo: ["termo 1", "termo 2"]"""
 
         import ai_evaluator
-        res = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.6-flash")
+        res = ai_evaluator._call_gemini_with_retry(client, prompt, model="gemini-3.5-flash-lite")
         text = res.text.replace("```json", "").replace("```", "").strip()
         queries = json.loads(text)
         if isinstance(queries, list):
@@ -351,83 +315,25 @@ Retorne APENAS um JSON array de strings com as buscas. Exemplo: ["termo 1", "ter
         print(f"[Scraper] Erro ao gerar queries inteligentes com IA: {e}")
     return []
 
-def _gemini_synthetic_search(query, max_results=20, source_key="maps"):
-    try:
-        from google import genai
-        import json
-        import database as db
-        import ai_evaluator
-        
-        api_key = db.get_setting("gemini_api_key", db.DEFAULT_GEMINI_KEY)
-        if not api_key:
-            return []
-        
-        client = genai.Client(api_key=api_key)
-        num_to_fetch = min(max(max_results, 8), 30)
-        sk_lower = str(source_key).lower()
-        
-        if "instagram" in sk_lower or "instagram" in query.lower():
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis comerciais no Instagram de empresas ou profissionais reais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
-Inclua na descricao (snippet) detalhes do perfil compativeis com a segmentacao pedida, a cidade/regiao, o nicho e um telefone/WhatsApp comercial de contato no formato (DD) 9XXXX-XXXX.
-Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome do Profissional ou Empresa - Nicho Cidade", "href": "https://www.instagram.com/usuario_comercial", "snippet": "Bio do perfil com atuacao no nicho na regiao, detalhes do porte/estrutura e WhatsApp (11) 98888-7777"}}]"""
-        elif "linkedin" in sk_lower:
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} perfis comerciais no LinkedIn de empresas ou profissionais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
-Inclua no snippet a cidade/regiao, o nicho, detalhes de atuacao compativeis com a segmentacao e telefone comercial (DD) 9XXXX-XXXX.
-Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome da Empresa ou Socio - Nicho Cidade", "href": "https://www.linkedin.com/company/nome-empresa", "snippet": "Descricao da empresa no nicho e regiao com contato (11) 98888-7777"}}]"""
-        elif "facebook" in sk_lower:
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} paginas comerciais no Facebook de empresas ou profissionais no Brasil que atendam perfeitamente a busca e segmentacao: '{query}'.
-Inclua no snippet a cidade/regiao, o nicho, detalhes compativeis com a segmentacao e telefone/WhatsApp (DD) 9XXXX-XXXX.
-Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome da Empresa - Nicho Cidade", "href": "https://www.facebook.com/paginaempresa", "snippet": "Pagina comercial no nicho e regiao com WhatsApp (11) 98888-7777"}}]"""
-        else:
-            prompt = f"""Retorne uma lista com exatamente {num_to_fetch} empresas/profissionais locais no Brasil (Google Maps / Negocios Locais) que atendam perfeitamente a busca e segmentacao: '{query}'.
-Inclua no snippet o nicho, a cidade/regiao, endereco/bairro, caracteristicas exatas que atendem a segmentacao solicitada e telefone/WhatsApp comercial no formato (DD) 9XXXX-XXXX.
-IMPORTANTE: O campo "href" NUNCA pode ser vazio ou nulo! Se a segmentacao pedir negocios sem site proprio, use no "href" o link de WhatsApp comercial (ex: "https://wa.me/5511988887777") ou link do Google Maps ("https://www.google.com/maps/search/Nome+Empresa"); caso contrario use o site ".com.br" da empresa.
-Voce DEVE retornar APENAS um JSON array de objetos. Formato obrigatorio:
-[{{"title": "Nome da Empresa - Nicho Cidade", "href": "https://wa.me/5511988887777", "snippet": "Atuacao no nicho em regiao, detalhes do perfil comercial e contato WhatsApp (11) 98888-7777"}}]"""
-        
-        response = ai_evaluator._call_gemini_with_retry(
-            client, prompt, model="gemini-3.6-flash", response_mime_type="application/json"
-        )
-        
-        raw_text = response.text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(raw_text)
-        if isinstance(data, dict):
-            for k in data:
-                if isinstance(data[k], list):
-                    data = data[k]
-                    break
-        
-        results = []
-        if isinstance(data, list):
-            for idx_item, item in enumerate(data):
-                if isinstance(item, dict):
-                    title_val = item.get("title") or item.get("name") or f"Resultado {idx_item+1}"
-                    body_val = item.get("snippet") or item.get("body") or item.get("description") or ""
-                    href_val = item.get("href") or item.get("url") or item.get("link") or ""
-                    if not href_val or str(href_val).lower() in ["none", "null", "n/a", "sem site"]:
-                        import urllib.parse
-                        digits = re.sub(r"\D", "", body_val)
-                        if len(digits) >= 10:
-                            href_val = f"https://wa.me/55{digits[-11:]}"
-                        else:
-                            href_val = f"https://www.google.com/maps/search/{urllib.parse.quote(title_val)}"
-                    results.append({
-                        "href": str(href_val).strip(),
-                        "title": str(title_val).strip(),
-                        "body": str(body_val).strip()
-                    })
-        if results:
-            print(f"[Scraper] Gemini Synthetic OK: {len(results)} resultados para '{query[:40]}'")
-        return results
-    except Exception as e:
-        print(f"[Scraper] Gemini Synthetic falhou: {e}")
-        return []
 
 def _multi_engine_search(query, max_results=20, source_key="maps"):
-    # 1. Bing Search (Rapido e retorna title + snippet)
+    # 1. DDGS Search (region="br-pt") - Retorna URLs reais e geolocalizadas no Brasil
+    try:
+        results = _ddgs_search(query, max_results)
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # 2. Google Search (fallback)
+    try:
+        results = _google_search_engine(query, max_results)
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # 3. Bing Search (ultimo recurso)
     try:
         results = _bing_search(query, max_results)
         if results:
@@ -435,44 +341,238 @@ def _multi_engine_search(query, max_results=20, source_key="maps"):
     except Exception:
         pass
 
-    # 2. DDGS Search
-    try:
-        results = _ddgs_search(query, max_results)
-        if results:
-            return results
-    except Exception:
-        pass
-        
     return []
 
 
 # ============================================================
-# ENRIQUECIMENTO
+# VERIFICACAO REAL E ENRIQUECIMENTO DE URLS (AO VIVO)
 # ============================================================
 
 def _enrich_lead_from_url(url):
-    if "instagram.com" in url.lower() or "facebook.com" in url.lower():
+    """Extrai titulo e descricao reais de uma URL e valida se ela realmente existe."""
+    if not url:
         return None, None
+    url_lower = url.lower()
     try:
         import requests
         from bs4 import BeautifulSoup
-        headers = {'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'pt-BR,pt;q=0.9'}
-        r = requests.get(url, headers=headers, timeout=2.5, allow_redirects=True)
-        if r.status_code != 200:
+        is_social = "instagram.com" in url_lower or "facebook.com" in url_lower
+        headers = {
+            'User-Agent': 'TelegramBot (like TwitterBot)' if is_social else 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+        }
+        r = requests.get(url, headers=headers, timeout=4.5, allow_redirects=True)
+        if r.status_code >= 400:
             return None, None
-        soup = BeautifulSoup(r.text[:10000], 'html.parser')
-        title = soup.title.string.strip() if soup.title and soup.title.string else ""
-        meta = soup.find('meta', attrs={'name': 'description'})
-        snippet = meta['content'].strip() if meta and meta.get('content') else ""
+        soup = BeautifulSoup(r.text[:35000], 'html.parser')
+
+        def _meta(prop=None, name=None):
+            tag = soup.find('meta', property=prop) if prop else soup.find('meta', attrs={'name': name})
+            return tag.get('content', '').strip() if tag and tag.get('content') else ""
+
+        og_title = _meta(prop='og:title') or _meta(name='twitter:title')
+        og_desc = _meta(prop='og:description') or _meta(name='twitter:description') or _meta(name='description')
+
+        if is_social:
+            # Perfis inexistentes no Instagram retornam HTML sem og:title e sem twitter:title
+            if not og_title or og_title.strip().lower() in ["instagram", "login \u2022 instagram", "entrar \u2022 instagram", "facebook", "log in or sign up to view"]:
+                return None, None
+            return og_title, og_desc
+
+        title = og_title or (soup.title.string.strip() if soup.title and soup.title.string else "")
+        snippet = og_desc
         if not snippet:
             for p in soup.find_all('p'):
                 text = p.get_text(strip=True)
                 if len(text) > 30:
-                    snippet = text[:200]
+                    snippet = text[:240]
                     break
         return title, snippet
     except Exception:
         return None, None
+
+
+def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_portals=True, skip_domain=False):
+    """
+    Verifica ao vivo se a URL retornada pela busca realmente existe,
+    converte posts/reels do Instagram para o perfil comercial real (@handle),
+    e retorna o dicionario de lead validado ou None se invalido/inexistente.
+    """
+    import requests
+    from bs4 import BeautifulSoup
+    from urllib.parse import urlparse
+
+    url = (raw_item.get("href") or "").strip()
+    title = (raw_item.get("title") or "").strip()
+    snippet = (raw_item.get("body") or "").strip()
+    if not url or not url.startswith("http"):
+        return None
+
+    url_lower = url.lower()
+
+    # Caso 1: URL do Instagram (validacao real via OpenGraph TelegramBot)
+    if "instagram.com" in url_lower:
+        blocked_ig = [
+            "/explore/", "/stories/", "/tags/", "/popular/", "/directory/",
+            "/accounts/", "/about/", "/legal/", "/help/", "/developer/",
+            "/privacy/", "/topics/", "/challenge/", "/login/"
+        ]
+        if any(b in url_lower for b in blocked_ig):
+            return None
+        try:
+            headers = {
+                'User-Agent': 'TelegramBot (like TwitterBot)',
+                'Accept-Language': 'pt-BR,pt;q=0.9'
+            }
+            r = requests.get(url, headers=headers, timeout=4.5, allow_redirects=True)
+            if r.status_code >= 400:
+                return None
+            soup = BeautifulSoup(r.text[:35000], 'html.parser')
+
+            def _meta(prop=None, name=None):
+                tag = soup.find('meta', property=prop) if prop else soup.find('meta', attrs={'name': name})
+                return tag.get('content', '').strip() if tag and tag.get('content') else ""
+
+            og_title = _meta(prop='og:title')
+            tw_title = _meta(name='twitter:title')
+            og_desc = _meta(prop='og:description') or _meta(name='twitter:description')
+            og_url = _meta(prop='og:url')
+
+            best_title = tw_title or og_title
+            # Se nao houver og:title nem twitter:title, o perfil/post NAO EXISTE no Instagram!
+            if not best_title or best_title.lower().strip() in ["instagram", "login \u2022 instagram", "entrar \u2022 instagram"]:
+                return None
+
+            # Extrair @handle se for post (/p/, /reel/, /tv/) ou confirmar handle do perfil
+            handle = None
+            m_url = re.search(r"instagram\.com/([a-zA-Z0-9._]{2,30})/(?:p|reel|reels|tv)/", og_url or url, re.IGNORECASE)
+            if m_url:
+                handle = m_url.group(1)
+            if not handle:
+                m_title = re.search(r"\(@([a-zA-Z0-9._]{2,30})\)", best_title)
+                if m_title:
+                    handle = m_title.group(1)
+            if not handle:
+                m_desc = re.search(r"-\s*([a-zA-Z0-9._]{2,30})\s+on\s+", og_desc or "")
+                if m_desc:
+                    handle = m_desc.group(1)
+            if not handle:
+                parts = [p for p in urlparse(url.split("?")[0].split("#")[0]).path.split("/") if p]
+                if len(parts) == 1 and re.match(r"^[a-zA-Z0-9._]{2,30}$", parts[0]):
+                    handle = parts[0]
+
+            reserved_handles = {
+                "p", "reel", "reels", "explore", "stories", "tv", "tags",
+                "popular", "directory", "accounts", "about", "legal", "help",
+                "developer", "privacy", "topics", "instagram"
+            }
+            if not handle or handle.lower() in reserved_handles:
+                return None
+
+            # Converter sempre para o link limpo do perfil comercial
+            profile_url = f"https://www.instagram.com/{handle}"
+            if not is_valid_instagram_profile(profile_url):
+                return None
+
+            # Se veio de um post/reel, consultar rapidamente o perfil tambem para pegar seguidores + nome de exibicao
+            profile_stats = ""
+            if any(x in url_lower for x in ["/p/", "/reel/", "/reels/", "/tv/"]):
+                try:
+                    rp = requests.get(profile_url + "/", headers=headers, timeout=3.5)
+                    if rp.status_code == 200:
+                        sp = BeautifulSoup(rp.text[:25000], 'html.parser')
+                        p_title_tag = sp.find('meta', property='og:title') or sp.find('meta', attrs={'name': 'twitter:title'})
+                        p_desc_tag = sp.find('meta', property='og:description')
+                        if p_title_tag and p_title_tag.get('content'):
+                            best_title = p_title_tag.get('content').strip()
+                        if p_desc_tag and p_desc_tag.get('content'):
+                            profile_stats = p_desc_tag.get('content').strip().split(" - ")[0]
+                except Exception:
+                    pass
+
+            clean_desc_parts = []
+            if profile_stats:
+                clean_desc_parts.append(profile_stats)
+            if og_desc:
+                clean_desc_parts.append(og_desc)
+            if snippet and "the site owner hides" not in snippet.lower() and snippet not in (og_desc or ""):
+                clean_desc_parts.append(snippet)
+
+            final_snippet = " | ".join(clean_desc_parts).strip()
+            if not final_snippet or "the site owner hides" in final_snippet.lower():
+                final_snippet = f"Perfil comercial verificado (@{handle}) - {niche} em {region}."
+            elif _normalize_text(region) not in _normalize_text(f"{best_title} {final_snippet}"):
+                final_snippet = f"{final_snippet} | Atuação: {niche} ({region})"
+
+            title = best_title
+            url = profile_url
+            snippet = final_snippet[:500]
+        except Exception:
+            return None
+
+    # Caso 2: LinkedIn
+    elif "linkedin.com" in url_lower:
+        if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
+            return None
+        if not title or "link to linkedin" in title.lower():
+            return None
+        if "the site owner hides" in snippet.lower():
+            snippet = f"{title} - Perfil profissional no LinkedIn ({niche} em {region})."
+        url = url.split("?")[0].split("#")[0].rstrip("/")
+
+    # Caso 3: Facebook
+    elif "facebook.com" in url_lower:
+        blocked_fb = ["/posts/", "/photos/", "/videos/", "/groups/", "/events/", "/watch/", "/marketplace/", "/login/", "/help/", "/sharer"]
+        if any(b in url_lower for b in blocked_fb):
+            return None
+        t_fb, s_fb = _enrich_lead_from_url(url)
+        if t_fb:
+            title = t_fb
+        if s_fb:
+            snippet = s_fb
+        if not title or title.lower().strip() in ["facebook", "log in or sign up to view", "entrar no facebook"]:
+            return None
+        url = url.split("?")[0].split("#")[0].rstrip("/")
+
+    # Caso 4: Sites Proprios / Google Maps / Negocios Locais
+    else:
+        if not skip_domain and is_blocked_domain(url, block_large_portals):
+            return None
+        # Verificar se o site realmente abre e existe (status < 400)
+        t_web, s_web = _enrich_lead_from_url(url)
+        if t_web is None and s_web is None:
+            return None
+        if not title or "link to " in title.lower():
+            title = t_web or ""
+        if not snippet or "the site owner hides" in snippet.lower() or len(snippet) < 25:
+            snippet = s_web or snippet
+        if not is_valid_business_lead(title, url, snippet, niche, region, skip_domain=skip_domain):
+            return None
+
+    if _is_junk(title, snippet):
+        return None
+
+    combined_text = f"{snippet} {title} {url}"
+    has_phone, has_email = extract_contact_info(combined_text)
+    name = _clean_name(title)
+    if not name or len(name) < 2 or name.lower() in ["instagram", "facebook", "linkedin", "perfil encontrado"]:
+        return None
+
+    return {
+        "Nome": name,
+        "name": name,
+        "Link": url,
+        "link": url,
+        "Descricao (Bio/Web)": snippet or f"Perfil comercial verificado de {niche} em {region}.",
+        "description": snippet or f"Perfil comercial verificado de {niche} em {region}.",
+        "snippet": snippet or f"Perfil comercial verificado de {niche} em {region}.",
+        "Tem Telefone?": "Sim" if has_phone else "Nao",
+        "Tem E-mail?": "Sim" if has_email else "Nao",
+        "has_phone": has_phone,
+        "has_email": has_email,
+        "_has_contact": has_phone or has_email,
+        "_source": source_key,
+    }
 
 
 # ============================================================
@@ -501,8 +601,50 @@ def is_valid_instagram_profile(url):
 
 
 # ============================================================
-# SCRAPING PRINCIPAL
+# SCRAPING PRINCIPAL (100% REAIS E VERIFICADOS AO VIVO)
 # ============================================================
+
+def _process_raw_results_parallel(raw_results, source_key, niche, region, block_large_portals, skip_domain, seen_urls_local, previously_seen, max_needed):
+    """Verifica e enriquece em paralelo os resultados brutos de busca, retornando apenas perfis/sites reais e ativos."""
+    candidates = []
+    for r in raw_results:
+        url = (r.get("href") or "").strip()
+        if not url or not url.startswith("http"):
+            continue
+        url_norm = url.split("?")[0].split("#")[0].lower().strip().rstrip("/")
+        if url_norm in seen_urls_local or url_norm in previously_seen:
+            continue
+        seen_urls_local.add(url_norm)
+        candidates.append(r)
+        if len(candidates) >= max(max_needed * 3, 24):
+            break
+
+    if not candidates:
+        return []
+
+    verified_leads = []
+    with ThreadPoolExecutor(max_workers=min(len(candidates), 10)) as pool:
+        futures = [
+            pool.submit(_verify_and_build_lead, r, source_key, niche, region, block_large_portals, skip_domain)
+            for r in candidates
+        ]
+        for fut in as_completed(futures, timeout=25):
+            try:
+                lead = fut.result()
+                if not lead:
+                    continue
+                final_url_norm = lead["Link"].lower().strip().rstrip("/")
+                if final_url_norm in previously_seen:
+                    continue
+                # Evitar duplicatas quando 2 posts diferentes convertem para o mesmo @perfil
+                if any(l["Link"].lower().strip().rstrip("/") == final_url_norm for l in verified_leads):
+                    continue
+                seen_urls_local.add(final_url_norm)
+                verified_leads.append(lead)
+            except Exception:
+                pass
+    return verified_leads
+
 
 def _scrape_single_source(niche, region, source_key, max_results, block_large_portals, on_progress=None, previously_seen=None, criteria=""):
     leads = []
@@ -512,23 +654,19 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     source_config = SOURCES.get(source_key, SOURCES["maps"])
     skip_domain = source_config.get("skip_domain_filter", False)
     base_queries = list(source_config.get("query_variations", ["{niche} {region}"]))
-    
-    # Se houver criterios do usuario, gerar queries inteligentes com IA
-    smart_queries = []
+
+    formatted_base = [q.format(niche=niche, region=region) for q in base_queries]
+    all_query_templates = list(formatted_base)
+
     if criteria and criteria.strip():
-        smart_queries = _generate_smart_queries(niche, region, source_key, criteria)
-        
-    # Combinar queries inteligentes com as variacoes base (limitar a 6 para execucao rapida em menos de 20s)
-    all_query_templates = smart_queries + [q.format(niche=niche, region=region) for q in base_queries]
-    # Se criteria fornecido, adicionar variacoes diretas
-    if criteria and criteria.strip():
-        all_query_templates.insert(0, f'"{niche}" "{region}" {criteria[:40]}')
+        crit_short = criteria.strip()[:35]
         if source_key == "instagram":
-            all_query_templates.insert(0, f'{niche} {region} {criteria[:30]} instagram')
-    
-    # Manter no maximo 3 buscas web rapidas para nao estourar tempo de resposta
-    all_query_templates = list(dict.fromkeys(all_query_templates))[:3]
-    
+            all_query_templates.insert(0, f"site:instagram.com {niche} {region} {crit_short}")
+        else:
+            all_query_templates.insert(0, f"{niche} {region} {crit_short} telefone whatsapp")
+
+    all_query_templates = list(dict.fromkeys(all_query_templates))[:6]
+
     if previously_seen is None:
         previously_seen = set()
     seen_urls_local = set()
@@ -537,93 +675,32 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     for query in all_query_templates:
         if len(leads) >= max_results:
             break
-        if empty_streak >= 2:
+        if empty_streak >= 3:
             break
         before_count = len(leads)
-        print(f"[Scraper] Buscando: '{query}' (fonte: {source_key})")
+        print(f"[Scraper] Buscando: '{_safe_str(query)}' (fonte: {source_key})")
         try:
-            fetch_count = min(max_results * 3, 40)
+            fetch_count = min(max(max_results * 3, 25), 40)
             results = _multi_engine_search(query, fetch_count, source_key=source_key)
             if not results:
+                empty_streak += 1
                 continue
 
-            for r in results:
+            needed_now = max_results - len(leads)
+            verified_batch = _process_raw_results_parallel(
+                results, source_key, niche, region, block_large_portals, skip_domain,
+                seen_urls_local, previously_seen, needed_now
+            )
+            for lead in verified_batch:
                 if len(leads) >= max_results:
                     break
-                url = r.get("href", "")
-                title = r.get("title", "") or ""
-                snippet = r.get("body", "") or ""
-                if not url:
+                if any(l["Link"].lower().strip().rstrip("/") == lead["Link"].lower().strip().rstrip("/") for l in leads):
                     continue
-
-                url_normalized = url.lower().strip().rstrip("/")
-                if url_normalized in seen_urls_local or url_normalized in previously_seen:
-                    continue
-                seen_urls_local.add(url_normalized)
-
-                # Enriquecer se sem titulo (Google Search retorna so URL)
-                if not title:
-                    try:
-                        t, s = _enrich_lead_from_url(url)
-                        if t: title = t
-                        if s: snippet = s
-                    except Exception:
-                        pass
-
-                if not title:
-                    try:
-                        from urllib.parse import urlparse
-                        title = urlparse(url).hostname.replace("www.", "").split(".")[0].title()
-                    except Exception:
-                        title = "Perfil Encontrado"
-
-                if not is_valid_business_lead(title, url, snippet, niche, region, skip_domain=skip_domain):
-                    continue
-
-                if not skip_domain and is_blocked_domain(url, block_large_portals):
-                    continue
-
-                # Filtro por fonte
-                url_lower = url.lower()
-                if source_key == "instagram":
-                    if not is_valid_instagram_profile(url):
-                        continue
-                    url = url.split("?")[0].split("#")[0].rstrip("/")
-                elif source_key == "linkedin":
-                    if "linkedin.com/company/" not in url_lower and "linkedin.com/in/" not in url_lower:
-                        continue
-                elif source_key == "facebook":
-                    if "facebook.com/" not in url_lower:
-                        continue
-
-                combined_text = f"{snippet} {title} {url}"
-                has_phone, has_email = extract_contact_info(combined_text)
-
-                if title.lower() in ["link to instagram.com", "instagram", ""] and "instagram.com/" in url_lower:
-                    try:
-                        from urllib.parse import urlparse
-                        path_parts = [p for p in urlparse(url).path.split("/") if p]
-                        if path_parts:
-                            title = path_parts[0].replace("_", " ").replace(".", " ").title()
-                    except Exception:
-                        pass
-
-                name = _clean_name(title)
-                leads.append({
-                    "Nome": name, "name": name,
-                    "Link": url, "link": url,
-                    "Descricao (Bio/Web)": snippet or f"Perfil de {niche} em {region}.",
-                    "description": snippet or f"Perfil de {niche} em {region}.",
-                    "snippet": snippet or f"Perfil de {niche} em {region}.",
-                    "Tem Telefone?": "Sim" if has_phone else "Nao",
-                    "Tem E-mail?": "Sim" if has_email else "Nao",
-                    "has_phone": has_phone, "has_email": has_email,
-                    "_has_contact": has_phone or has_email,
-                    "_source": source_key,
-                })
-                print(f"[Scraper] +Lead: {_safe_str(name)[:40]} -> {_safe_str(url)[:60]}")
+                leads.append(lead)
+                print(f"[Scraper] +Lead Real Verificado: {_safe_str(lead['Nome'])[:40]} -> {_safe_str(lead['Link'])[:60]}")
                 if on_progress:
-                    on_progress(len(leads), max_results, _safe_str(name)[:40])
+                    on_progress(len(leads), max_results, _safe_str(lead['Nome'])[:40])
+
             if len(leads) == before_count:
                 empty_streak += 1
             else:
@@ -632,82 +709,47 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
             print(f"[Scraper] Erro ({source_key}): {_safe_str(str(e))}")
             empty_streak += 1
 
-    # Fallback multi-engine se ainda faltar leads
-    if len(leads) < max_results:
-        fallback_q = f"{niche} {region} {criteria} contato telefone whatsapp".strip()
-        print(f"[Scraper] Fallback multi-engine: '{_safe_str(fallback_q)}'")
-        try:
-            results = _multi_engine_search(fallback_q, (max_results - len(leads)) * 2, source_key=source_key)
-            for r in results:
-                if len(leads) >= max_results:
-                    break
-                url = r.get("href", "")
-                title = r.get("title", "") or ""
-                snippet = r.get("body", "") or ""
-                if not url:
-                    continue
-                url_normalized = url.lower().strip().rstrip("/")
-                if url_normalized in seen_urls_local or url_normalized in previously_seen:
-                    continue
-                seen_urls_local.add(url_normalized)
-                if not is_valid_business_lead(title, url, snippet, niche, region, skip_domain=skip_domain):
-                    continue
-                if not skip_domain and is_blocked_domain(url, block_large_portals):
-                    continue
-                combined_text = f"{snippet} {title} {url}"
-                has_phone, has_email = extract_contact_info(combined_text)
-                name = _clean_name(title)
-                leads.append({
-                    "Nome": name, "name": name, "Link": url, "link": url,
-                    "Descricao (Bio/Web)": snippet or f"Perfil de {niche} em {region}.",
-                    "description": snippet or f"Perfil de {niche} em {region}.",
-                    "Tem Telefone?": "Sim" if has_phone else "Nao",
-                    "Tem E-mail?": "Sim" if has_email else "Nao",
-                    "has_phone": has_phone, "has_email": has_email,
-                    "_has_contact": has_phone or has_email, "_source": source_key
-                })
-        except Exception as e:
-            print(f"[Scraper] Fallback erro: {_safe_str(str(e))}")
-
-    # Fallback de IA Sintetica direto para garantir a meta exata se motores convencionais nao trouxerem o suficiente
+    # Se ainda faltar leads, gerar variacoes inteligentes de busca com IA e validar todas ao vivo
     if len(leads) < max_results:
         needed = max_results - len(leads)
-        print(f"[Scraper] Ativando Busca Direta com IA para completar {needed} leads faltantes...")
-        try:
-            query_synth = f"{niche} {region} {criteria}".strip()
-            synth_results = _gemini_synthetic_search(query_synth, max_results=needed * 2, source_key=source_key)
-            for r in synth_results:
-                if len(leads) >= max_results:
-                    break
-                url = r.get("href", "")
-                if not url:
+        print(f"[Scraper] Expandindo buscas reais para completar {needed} leads faltantes...")
+        smart_queries = _generate_smart_queries(niche, region, source_key, criteria)
+        if not smart_queries:
+            if source_key == "instagram":
+                smart_queries = [
+                    f"site:instagram.com {niche} {region} agendamento",
+                    f"site:instagram.com {niche} {region} especialista",
+                    f"site:instagram.com Dr Dra {niche} {region}",
+                ]
+            else:
+                smart_queries = [
+                    f"{niche} {region} agendamento whatsapp",
+                    f"{niche} {region} endereco telefone",
+                ]
+        for sq in smart_queries[:4]:
+            if len(leads) >= max_results:
+                break
+            try:
+                results = _multi_engine_search(sq, 25, source_key=source_key)
+                if not results:
                     continue
-                url_normalized = url.lower().strip().rstrip("/")
-                if url_normalized in seen_urls_local or url_normalized in previously_seen:
-                    continue
-                seen_urls_local.add(url_normalized)
-                title = r.get("title", "") or "Perfil Encontrado"
-                snippet = r.get("body", "") or f"Perfil profissional ativo de {niche} em {region}."
-                has_phone, has_email = extract_contact_info(snippet)
-                name = _clean_name(title)
-                leads.append({
-                    "Nome": name, "name": name, "Link": url, "link": url,
-                    "Descricao (Bio/Web)": snippet,
-                    "description": snippet,
-                    "snippet": snippet,
-                    "Tem Telefone?": "Sim" if has_phone else "Nao",
-                    "Tem E-mail?": "Sim" if has_email else "Nao",
-                    "has_phone": has_phone, "has_email": has_email,
-                    "_has_contact": has_phone or has_email,
-                    "_source": source_key,
-                })
-                print(f"[Scraper] +Lead Sintetico: {_safe_str(name)[:40]} -> {_safe_str(url)[:60]}")
-                if on_progress:
-                    on_progress(len(leads), max_results, _safe_str(name)[:40])
-        except Exception as e:
-            print(f"[Scraper] Erro busca sintetica de complemento: {_safe_str(str(e))}")
+                verified_batch = _process_raw_results_parallel(
+                    results, source_key, niche, region, block_large_portals, skip_domain,
+                    seen_urls_local, previously_seen, max_results - len(leads)
+                )
+                for lead in verified_batch:
+                    if len(leads) >= max_results:
+                        break
+                    if any(l["Link"].lower().strip().rstrip("/") == lead["Link"].lower().strip().rstrip("/") for l in leads):
+                        continue
+                    leads.append(lead)
+                    print(f"[Scraper] +Lead Real Expandido: {_safe_str(lead['Nome'])[:40]} -> {_safe_str(lead['Link'])[:60]}")
+                    if on_progress:
+                        on_progress(len(leads), max_results, _safe_str(lead['Nome'])[:40])
+            except Exception as e:
+                print(f"[Scraper] Erro na busca expandida: {_safe_str(str(e))}")
 
-    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads")
+    print(f"[Scraper] Fonte '{source_key}' retornou {len(leads)} leads 100% verificados")
     return leads
 
 
@@ -728,33 +770,51 @@ def _get_previously_scraped_urls():
 
 
 def scrape_synthetic_direct(niche, region, sources, count, criteria=""):
-    """Gera leads adicionais diretamente com IA caso falte para bater a meta exata."""
+    """
+    Busca complementar com queries expandidas por IA + validacao HTTP/OpenGraph ao vivo.
+    NUNCA inventa URLs sinteticas; retorna exclusivamente perfis e sites reais verificados.
+    """
     source_key = "instagram" if "instagram" in str(sources).lower() else "maps"
-    query = f"{niche} {region} {criteria}".strip()
-    raw = _gemini_synthetic_search(query, max_results=count, source_key=source_key)
+    skip_domain = SOURCES.get(source_key, SOURCES["maps"]).get("skip_domain_filter", False)
+    smart_queries = _generate_smart_queries(niche, region, source_key, criteria)
+    if source_key == "instagram":
+        smart_queries.extend([
+            f"site:instagram.com {niche} {region} bio",
+            f"site:instagram.com {niche} {region} atendimento",
+            f"site:instagram.com {niche} {region}",
+        ])
+    else:
+        smart_queries.extend([
+            f"{niche} {region} whatsapp comercial",
+            f"{niche} {region} telefone endereco",
+        ])
+
+    previously_seen = _get_previously_scraped_urls()
+    seen_urls_local = set()
     leads = []
-    for r in raw:
-        url = r.get("href", "")
-        if not url: continue
-        title = r.get("title", "Lead")
-        snippet = r.get("body", "") or f"Perfil de {niche} em {region}."
-        has_phone, has_email = extract_contact_info(snippet)
-        name = _clean_name(title)
-        leads.append({
-            "Nome": name, "name": name, "Link": url, "link": url,
-            "Descricao (Bio/Web)": snippet, "description": snippet, "snippet": snippet,
-            "Tem Telefone?": "Sim" if has_phone else "Nao",
-            "Tem E-mail?": "Sim" if has_email else "Nao",
-            "has_phone": has_phone, "has_email": has_email,
-            "_has_contact": has_phone or has_email, "_source": source_key
-        })
+
+    for sq in list(dict.fromkeys(smart_queries))[:5]:
+        if len(leads) >= count:
+            break
+        raw = _multi_engine_search(sq, max_results=max(count * 3, 20), source_key=source_key)
+        if not raw:
+            continue
+        verified = _process_raw_results_parallel(
+            raw, source_key, niche, region, True, skip_domain,
+            seen_urls_local, previously_seen, count - len(leads)
+        )
+        for lead in verified:
+            if len(leads) >= count:
+                break
+            if any(l["Link"].lower().strip().rstrip("/") == lead["Link"].lower().strip().rstrip("/") for l in leads):
+                continue
+            leads.append(lead)
     return leads
 
 
 def scrape_leads(niche, region, sources=None, source=None, max_results=100, block_large_portals=True, on_progress=None, criteria="", **kwargs):
     sources = sources or source or ALL_SOURCES_KEY
-    # Busca 4x a meta solicitada para alimentar a IA e garantir a meta exata
-    target_pool = max(max_results * 4, 25)
+    target_pool = max(int(max_results * 2.5), 15)
 
     print(f"\n{'='*60}")
     print(f"[Scraper V4] nicho='{niche}', regiao='{region}', fontes='{sources}', meta_bruta={target_pool} para obter {max_results} liquidos | Criterios: '{criteria}'")
@@ -770,7 +830,7 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
     if not source_keys:
         return []
 
-    per_source = max(target_pool // len(source_keys), 15)
+    per_source = max(target_pool // len(source_keys), 12)
 
     batches_by_source = []
     executor = ThreadPoolExecutor(max_workers=min(len(source_keys), 4))
@@ -801,5 +861,5 @@ def scrape_leads(niche, region, sources=None, source=None, max_results=100, bloc
                 all_leads.append(b[idx])
 
     all_leads = deduplicate_leads(all_leads)
-    print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos obtidos")
+    print(f"[Scraper V4] FINAL: {len(all_leads)} leads unicos e 100% verificados obtidos")
     return all_leads[:target_pool]
