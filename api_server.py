@@ -43,21 +43,33 @@ def read_root():
 
 @app.get("/api/version")
 def get_version():
+    ddgs_ver = "missing"
+    try:
+        import ddgs
+        ddgs_ver = getattr(ddgs, "__version__", "installed")
+    except Exception as e:
+        ddgs_ver = f"err: {e}"
     return {
-        "version": "4.3.0", 
-        "build": "2026-10-26T20:25", 
-        "engine": "velli-precision-v4-engine-100"
+        "version": "5.0.0", 
+        "build": "2026-11-14-v5-real-verified", 
+        "engine": "velli-real-verified-engine",
+        "ddgs": ddgs_ver
     }
 
 @app.get("/api/debug-scrape")
-def debug_scrape(niche: str = "dentistas", region: str = "fortaleza"):
+def debug_scrape(niche: str = "Dentistas", region: str = "Fortaleza", source: str = "instagram"):
     import traceback
     try:
-        leads = scraper.scrape_leads(niche=niche, region=region, sources=["maps", "instagram"], max_results=5)
+        q = f"site:instagram.com {niche} {region}" if source == "instagram" else f"{niche} em {region} telefone whatsapp"
+        raw = scraper._ddgs_search(q, max_results=8)
+        verified = scraper._process_raw_results_parallel(raw, source, niche, region, True, source == "instagram", set(), set(), 5)
         return {
             "status": "ok",
-            "leads_count": len(leads),
-            "leads": leads
+            "query": q,
+            "raw_count": len(raw),
+            "raw_sample": raw[:4],
+            "verified_count": len(verified),
+            "leads": verified
         }
     except Exception as e:
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}

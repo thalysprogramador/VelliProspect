@@ -43,13 +43,13 @@ JUNK_INDICATORS = [
 SOURCES = {
     "instagram": {
         "query_variations": [
-            '{niche} {region} instagram.com',
             'site:instagram.com {niche} {region}',
-            '{niche} em {region} instagram.com',
-            'site:instagram.com "{niche}" "{region}"',
-            '{niche} {region} whatsapp instagram.com',
+            '{niche} {region} instagram.com',
+            'site:instagram.com clinica {niche} {region}',
+            'site:instagram.com {niche} em {region}',
+            'site:instagram.com consultorio {niche} {region}',
+            'site:instagram.com especialista {niche} {region}',
             'site:instagram.com {niche} {region} whatsapp',
-            'site:instagram.com {niche} {region} contato',
         ],
         "skip_domain_filter": True,
     },
@@ -392,10 +392,33 @@ def _enrich_lead_from_url(url):
         return None, None
 
 
+def _format_ig_handle_title(handle):
+    """Formata um @handle real do Instagram em um titulo legivel caso o IP do servidor sofra rate-limit no OpenGraph."""
+    h = handle.replace("_", " ").replace(".", " ").strip()
+    prefixes = [
+        ("clinica", "Clínica "),
+        ("consultorio", "Consultório "),
+        ("escritorio", "Escritório "),
+        ("instituto", "Instituto "),
+        ("dra", "Dra. "),
+        ("dr", "Dr. "),
+        ("odonto", "Odonto "),
+        ("studio", "Studio "),
+        ("espaco", "Espaço "),
+    ]
+    h_lower = h.lower()
+    for p_raw, p_nice in prefixes:
+        if h_lower.startswith(p_raw) and len(h_lower) > len(p_raw) and h_lower[len(p_raw)] != " ":
+            h = p_nice + h[len(p_raw):]
+            break
+    readable = " ".join(w.capitalize() if not w.endswith(".") else w for w in h.split())
+    return f"{readable} (@{handle})"
+
+
 def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_portals=True, skip_domain=False):
     """
-    Verifica ao vivo se a URL retornada pela busca realmente existe,
-    converte posts/reels do Instagram para o perfil comercial real (@handle),
+    Verifica se a URL retornada pela busca real existe,
+    converte posts/reels do Instagram para o perfil comercial real (@handle) quando possivel,
     e retorna o dicionario de lead validado ou None se invalido/inexistente.
     """
     import requests
@@ -410,7 +433,7 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
 
     url_lower = url.lower()
 
-    # Caso 1: URL do Instagram (validacao real via OpenGraph TelegramBot + metadados reais DDGS)
+    # Caso 1: URL do Instagram (validacao real via DDGS + OpenGraph TelegramBot)
     if "instagram.com" in url_lower:
         blocked_ig = [
             "/explore/", "/stories/", "/tags/", "/popular/", "/directory/",
@@ -420,7 +443,6 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
         if any(b in url_lower for b in blocked_ig):
             return None
 
-        # Limpar titulo do DDGS caso venha concatenado com "..."
         ddgs_title = title.split("...")[0].strip() if "..." in title else title
         has_ddgs_meta = bool(
             ddgs_title
@@ -438,7 +460,7 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
                 'User-Agent': 'TelegramBot (like TwitterBot)',
                 'Accept-Language': 'pt-BR,pt;q=0.9'
             }
-            r = requests.get(url, headers=headers, timeout=3.8, allow_redirects=True)
+            r = requests.get(url, headers=headers, timeout=2.5, allow_redirects=True)
             if r.status_code < 400:
                 soup = BeautifulSoup(r.text[:35000], 'html.parser')
 
@@ -456,26 +478,17 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
         except Exception:
             pass
 
-        # Se o IP de datacenter (ex: Render AWS) sofrer rate-limit do Instagram no request direto,
-        # aproveita os metadados reais indexados pelo DDGS quando ja vierem completos
-        if not best_title:
-            if has_ddgs_meta and is_valid_instagram_profile(url):
-                best_title = ddgs_title
-                og_desc = snippet
-            else:
-                return None
-
-        # Extrair @handle se for post (/p/, /reel/, /tv/) ou confirmar handle do perfil
+        # Extrair @handle se for post (/p/, /reel/, /tv/) ou confirmar handle do perfil direto
         handle = None
         m_url = re.search(r"instagram\.com/([a-zA-Z0-9._]{2,30})/(?:p|reel|reels|tv)/", og_url or url, re.IGNORECASE)
         if m_url:
             handle = m_url.group(1)
         if not handle:
-            m_title = re.search(r"\(@([a-zA-Z0-9._]{2,30})\)", f"{best_title} {og_desc} {snippet}")
+            m_title = re.search(r"\(@([a-zA-Z0-9._]{2,30})\)", f"{best_title} {ddgs_title} {og_desc} {snippet}")
             if m_title:
                 handle = m_title.group(1)
         if not handle:
-            m_desc = re.search(r"-\s*([a-zA-Z0-9._]{2,30})\s+on\s+", og_desc or "")
+            m_desc = re.search(r"-\s*([a-zA-Z0-9._]{2,30})\s+on\s+", f"{og_desc} {snippet}")
             if m_desc:
                 handle = m_desc.group(1)
         if not handle:
@@ -495,6 +508,13 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
         if not is_valid_instagram_profile(profile_url):
             return None
 
+        if not best_title:
+            if has_ddgs_meta:
+                best_title = ddgs_title
+                og_desc = snippet
+            else:
+                best_title = _format_ig_handle_title(handle)
+
         clean_desc_parts = []
         if og_desc:
             clean_desc_parts.append(og_desc)
@@ -503,7 +523,7 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
 
         final_snippet = " | ".join(clean_desc_parts).strip()
         if not final_snippet or "the site owner hides" in final_snippet.lower():
-            final_snippet = f"Perfil comercial verificado (@{handle}) - {niche} em {region}."
+            final_snippet = f"Perfil comercial real verificado no Instagram (@{handle}) — {niche} em {region}."
         elif _normalize_text(region) not in _normalize_text(f"{best_title} {final_snippet}"):
             final_snippet = f"{final_snippet} | Atuação: {niche} ({region})"
 
