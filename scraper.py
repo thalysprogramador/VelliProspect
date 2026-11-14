@@ -267,27 +267,36 @@ def _bing_search(query, max_results=20):
 
 
 def _ddgs_search(query, max_results=20):
+    results = []
+    seen_hrefs = set()
     try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
-
-    for attempt in range(2):
-        try:
-            results = []
-            with DDGS() as ddgs:
-                for r in ddgs.text(query, max_results=max_results, region="br-pt", backend="yandex"):
-                    href = r.get("href") or ""
-                    if "codycrossanswers.com" in href or "support.google.com" in href:
-                        continue
-                    results.append({"href": href, "title": r.get("title"), "body": r.get("body")})
-            if results:
-                print(f"[Scraper] DDGS (yandex) OK: {len(results)} resultados para '{_safe_str(query)[:50]}'")
-                return results
-        except Exception as e:
-            if attempt == 1:
-                print(f"[Scraper] DDGS (yandex) falhou: {e}")
-    return []
+        from ddgs.engines.yandex import Yandex
+        eng = Yandex()
+        # Faz ate 3 chamadas rapidas em page=1 (cada searchid traz ~6-12 resultados reais)
+        for attempt in range(3):
+            try:
+                raw_items = eng.search(query, region="br-pt", safesearch="moderate", timelimit=None, page=1)
+                if raw_items:
+                    for item in raw_items:
+                        href = getattr(item, "href", "") or ""
+                        if not href or href in seen_hrefs:
+                            continue
+                        seen_hrefs.add(href)
+                        results.append({
+                            "href": href,
+                            "title": getattr(item, "title", "") or "",
+                            "body": getattr(item, "body", "") or "",
+                        })
+                if len(results) >= max_results or (results and attempt >= 1):
+                    break
+            except Exception:
+                pass
+        if results:
+            print(f"[Scraper] Yandex Direct OK: {len(results)} resultados para '{_safe_str(query)[:50]}'")
+            return results[:max_results]
+    except Exception as e:
+        print(f"[Scraper] Yandex Direct erro: {e}")
+    return results
 
 
 def _generate_smart_queries(niche, region, source_key, criteria=""):
