@@ -45,12 +45,12 @@ SOURCES = {
     "instagram": {
         "query_variations": [
             'site:instagram.com {niche} {region}',
-            '{niche} {region} instagram.com',
             'site:instagram.com clinica {niche} {region}',
             'site:instagram.com {niche} em {region}',
             'site:instagram.com consultorio {niche} {region}',
             'site:instagram.com especialista {niche} {region}',
             'site:instagram.com {niche} {region} whatsapp',
+            'site:instagram.com {niche} {region} contato',
         ],
         "skip_domain_filter": True,
     },
@@ -441,6 +441,14 @@ def _verify_and_build_lead(raw_item, source_key, niche, region, block_large_port
 
     url_lower = url.lower()
 
+    # Filtro estrito de dominio por fonte
+    if source_key == "instagram" and "instagram.com" not in url_lower:
+        return None
+    if source_key == "linkedin" and "linkedin.com" not in url_lower:
+        return None
+    if source_key == "facebook" and "facebook.com" not in url_lower:
+        return None
+
     # Caso 1: URL do Instagram (validacao real via DDGS + OpenGraph TelegramBot)
     if "instagram.com" in url_lower:
         blocked_ig = [
@@ -691,8 +699,7 @@ def _scrape_single_source(niche, region, source_key, max_results, block_large_po
     if criteria and criteria.strip():
         crit_short = criteria.strip()[:35]
         if source_key == "instagram":
-            all_query_templates.insert(2, f"{niche} {region} {crit_short} instagram.com")
-            all_query_templates.insert(3, f"site:instagram.com {niche} {region} {crit_short}")
+            all_query_templates.insert(2, f"site:instagram.com {niche} {region} {crit_short}")
         else:
             all_query_templates.insert(0, f"{niche} {region} {crit_short} telefone whatsapp")
 

@@ -50,8 +50,8 @@ def get_version():
     except Exception as e:
         ddgs_ver = f"err: {e}"
     return {
-        "version": "5.3.0", 
-        "build": "2026-11-14-v5.3-strict-live", 
+        "version": "5.4.0", 
+        "build": "2026-11-14-v5.4-strict-domain-live", 
         "engine": "velli-real-verified-engine",
         "ddgs": ddgs_ver
     }
